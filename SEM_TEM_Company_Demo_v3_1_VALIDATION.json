@@ -1,0 +1,102 @@
+{
+  "version": "3.1",
+  "python": "3.13.14",
+  "opencv": "4.14.0",
+  "dataset": "Synthetic only; not company TEM validation",
+  "rf": {
+    "reload_identical": true,
+    "overlap_pixels": 0,
+    "training_samples": 883,
+    "metrics": {
+      "1": {
+        "iou": 0.9976404428102326,
+        "dice": 0.9988188278835364,
+        "both_empty": false
+      },
+      "2": {
+        "iou": 0.9989723681205754,
+        "dice": 0.9994859199177472,
+        "both_empty": false
+      },
+      "3": {
+        "iou": 0.866877971473851,
+        "dice": 0.9286926994906621,
+        "both_empty": false
+      }
+    },
+    "inference": {
+      "seconds": 0.3108357999008149,
+      "threshold": 0.55,
+      "margin": 0.15,
+      "review_pixels": 101,
+      "excluded_pixels": 0,
+      "overlap_pixels": 0,
+      "note": "Vote fractions are not calibrated accuracy; predictions are not GT"
+    }
+  },
+  "sam": {
+    "model": {
+      "model": "vit_b",
+      "device": "cpu",
+      "checkpoint_sha256": "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912",
+      "decoder_sha256": null
+    },
+    "initial": {
+      "seconds": 12.647377599962056,
+      "embedding_reused": false,
+      "predicted_iou": 0.9958633184432983,
+      "measured_accuracy": false,
+      "prior_source": "none"
+    },
+    "refined": {
+      "seconds": 0.1148900999687612,
+      "embedding_reused": true,
+      "predicted_iou": 1.0002015829086304,
+      "measured_accuracy": false,
+      "prior_source": "sam_logits"
+    },
+    "binary_seed": {
+      "seconds": 0.1135838000336662,
+      "embedding_reused": true,
+      "predicted_iou": 0.9628465175628662,
+      "measured_accuracy": false,
+      "prior_source": "binary_mask_seed"
+    },
+    "metrics": {
+      "iou": 0.9949743351277878,
+      "dice": 0.9974808373302255,
+      "both_empty": false
+    },
+    "modes": [
+      {
+        "mode": "SAM grid",
+        "candidates": 5,
+        "preview_points_equal": true
+      },
+      {
+        "mode": "MatSAM Canny",
+        "candidates": 5,
+        "preview_points_equal": true
+      },
+      {
+        "mode": "MatSAM Otsu",
+        "candidates": 5,
+        "preview_points_equal": true
+      }
+    ]
+  },
+  "date": "2026-09-23",
+  "unit_tests": {
+    "passed": 28,
+    "failed": 0,
+    "seconds": 9.929,
+    "command": "python -B -m unittest discover -s . -p \"test_*.py\" -v",
+    "note": "Run outside sandbox because Python 3.13 Windows TemporaryDirectory permissions blocked sandbox access."
+  },
+  "ui": "Hidden Tk widget/handler tests only; no full visible desktop QA",
+  "limits": [
+    "Synthetic only; company TEM images not validated",
+    "ViT-H, CUDA, trained Decoder not tested",
+    "No clean offline installation test"
+  ]
+}
