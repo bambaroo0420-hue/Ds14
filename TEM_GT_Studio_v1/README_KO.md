@@ -1,6 +1,8 @@
-# TEM GT Studio v1 — 테스트용 로컬 GT 제작 도구
+# TEM GT Studio v1.1 — 테스트용 로컬 GT 제작 도구
 
-2026-09-28. 이 도구는 사용자 확인을 전제로 하는 GT 편집기입니다. 자동 계측/학습 프로그램은 아닙니다.
+2026-09-28 v1.1: Tesseract → EasyOCR, 로컬 가중치 폴더/목록 추가. [가중치 다운로드·배치 안내](WEIGHTS_KO.md)를 먼저 확인하세요.
+
+이 도구는 사용자 확인을 전제로 하는 GT 편집기입니다. 자동 계측/학습 프로그램은 아닙니다.
 
 ## 빠른 실행
 
@@ -39,7 +41,7 @@ ROI 사각형을 지정하고 `계면 polyline` 모드에서 계면을 대략 �
 
 ## SAM / micro-SAM 설정 (선택 설치)
 
-기본 설치만으로 수동·superpixel·DP·GT 저장을 사용할 수 있습니다. SAM과 OCR은 각 실행 환경이 추가로 필요합니다. 가중치는 용량/라이선스 때문에 ZIP에 넣지 않았으며 앱이 자동 다운로드하지 않습니다.
+기본 설치만으로 수동·superpixel·DP·GT 저장을 사용할 수 있습니다. SAM과 OCR은 로컬 가중치가 필요합니다. EasyOCR 패키지는 기본 requirements에 포함됩니다. 가중치는 용량/라이선스 때문에 ZIP에 넣지 않았으며 앱이 자동 다운로드하지 않습니다.
 
 **SAM**: 사용 환경(CPU/CUDA)에 맞는 PyTorch/torchvision을 먼저 설치하고 Meta SAM 패키지를 설치합니다.
 
@@ -62,11 +64,13 @@ UI backend를 micro-SAM으로 바꾸고 체크포인트와 일치하는 model ty
 
 ## OCR 설치 및 제외
 
-Python 패키지 pytesseract 외에 **Tesseract 실행 프로그램**이 필요합니다. PATH에 있으면 자동 사용하고, 없으면 UI에 실행 파일의 절대 경로를 넣습니다. 공식 안내: https://tesseract-ocr.github.io/tessdoc/Installation.html
+EasyOCR를 사용합니다. `install_windows.bat` 또는 `pip install -r requirements.txt`로 Python 패키지를 설치합니다. 별도 OCR 실행 프로그램/PATH 설정은 없습니다. PyTorch/torchvision도 필요하므로 패키지 다운로드 용량은 클 수 있습니다.
 
-v1 OCR은 기본 영어 데이터로 숫자/영문 샘플 정보/단위를 읽습니다. 한글 샘플명 완전 인식은 보장하지 않으며 수동 제외로 보완하세요. 가로 방향 스케일바와 `nm` / `um` / `µm`를 처리합니다. 바 후보 선택은 사람이 확인합니다. 잘린 바/세로·회전 바/겹친 숫자는 수동 두 끝점+실제 nm 길이 입력을 사용하세요.
+[WEIGHTS_KO.md](WEIGHTS_KO.md)의 CRAFT와 English G2 ZIP을 풀어 `models/easyocr/`에 `.pth`를 넣으세요. 한글 모드에는 Korean G2도 넣습니다. UI에서 폴더와 언어를 선택합니다. CPU 실행이며 `download_enabled=False`로 자동 가중치 다운로드를 차단합니다.
 
-배율 숫자만으로 스케일을 계산하지 않습니다. 문자 박스는 읽은 단어 중심이므로 누락된 문자와 다른 주석은 polygon/brush로 `학습 제외`하세요. 문자/바 제외는 **loss와 metric용 mask**이며 입력 이미지를 자동으로 inpaint하거나 crop하지 않습니다. 학습에서 문자 입력 자체를 없애려면 구조 밖 주석 띠를 crop해서 patch를 추출하세요.
+가로 스케일바와 nm/um/µm를 처리합니다. OCR의 분리된 숫자·단위도 이웃 위치로 연결합니다. 낮은 신뢰도의 문자 박스는 제외 후보로 유지하지만 스케일 환산에는 사용하지 않습니다. 자동 결과는 확인해야 합니다. 세로/회전/잘린 바는 수동 두 끝점+실제 길이를 사용하세요.
+
+배율 숫자만으로 스케일을 계산하지 않습니다. 문자·스케일바 제외는 loss/metric용 mask이며 입력을 inpaint/crop하지 않습니다. 검출 누락은 polygon/brush로 제외하세요.
 
 ## 출력 ZIP
 
@@ -102,7 +106,7 @@ python -m pip download -r requirements.txt -d wheels
 python -m pip install --no-index --find-links wheels -r requirements.txt
 ```
 
-SAM/micro-SAM/PyTorch, 체크포인트, Tesseract 실행 파일·언어 데이터는 별도로 준비해야 합니다. 이 ZIP은 설치파일 전체를 포함한 오프라인 번들이 아닙니다.
+SAM/micro-SAM/PyTorch, 체크포인트, EasyOCR 가중치는 별도로 준비해야 합니다. 이 ZIP은 설치파일 전체를 포함한 오프라인 번들이 아닙니다.
 
 ## 검증
 
@@ -111,4 +115,4 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-테스트는 수평/대각선/닫힌 경계 이동, 3 px edge, ignore 처리, 프로젝트 roundtrip, superpixel 편집/undo, polyline 분할, export API를 검사합니다. 실제 TEM 데이터는 사용하지 않았습니다.
+테스트는 수평/대각선/닫힌 경계 이동, 3 px edge, ignore 처리, 프로젝트 roundtrip, superpixel 편집/undo, polyline 분할, export API를 검사합니다. 실제 TEM 데이터는 사용하지 않았습니다. OCR 어댑터 검사는 가짜 Reader로 로컬 경로·다운로드 OFF·언어별 요구 파일을 검증하며 실제 EasyOCR 가중치 인식 성능 검사가 아닙니다.

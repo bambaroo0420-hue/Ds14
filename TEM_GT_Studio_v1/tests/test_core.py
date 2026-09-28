@@ -73,7 +73,12 @@ def test_api_flow():
     assert zipfile.is_zipfile(io.BytesIO(r.data))
     assert client.post('/api/delete',json={'id':key},headers=h).status_code==200
 
-def test_ocr_scale_and_manual_exclusion():
+def test_ocr_scale_and_manual_exclusion(monkeypatch):
+    import ocr_adapter
+    monkeypatch.setattr(ocr_adapter,"read_words",lambda *args,**kw:[
+        {"text":"120k","box":[482,14,529,29],"confidence":96},
+        {"text":"50 nm","box":[71,347,132,362],"confidence":81},
+        {"text":"Sample A-01","box":[351,334,476,353],"confidence":92}])
     import app as a
     client=a.app.test_client();h={'X-GT-Token':a.TOKEN}
     key=client.post('/api/demo',json={},headers=h).json['id']

@@ -2,6 +2,9 @@
 __pycache__/
 .pytest_cache/
 *.pyc
-models/
+models/**/*.pth
+models/**/*.pt
+models/**/*.zip
+models/**/*.onnx
 wheels/
 outputs/

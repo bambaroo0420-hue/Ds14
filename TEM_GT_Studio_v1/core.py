@@ -206,18 +206,24 @@ class Document:
             d.classes=info['classes']; d.lines=info['lines']; d.meta=info['meta']; return d
 
 
-def recognize(image,tesseract_cmd=None):
-    import pytesseract
-    if tesseract_cmd: pytesseract.pytesseract.tesseract_cmd=tesseract_cmd
-    data=pytesseract.image_to_data(image,config='--psm 11',output_type=pytesseract.Output.DICT)
-    words=[]; groups={}
-    for i,t in enumerate(data['text']):
-        if not t.strip() or float(data['conf'][i])<20: continue
-        x,y,w,h=[int(data[k][i]) for k in ['left','top','width','height']]
-        item={'text':t,'box':[x,y,x+w,y+h],'confidence':float(data['conf'][i])}; words.append(item)
-        key=tuple(data[k][i] for k in ['block_num','par_num','line_num']); groups.setdefault(key,[]).append(item)
+def recognize(image,model_dir='models/easyocr',language='en'):
+    from ocr_adapter import read_words
+    words=read_words(image,model_dir,language)
+    return match_scale_bars(image,words)
+
+
+def match_scale_bars(image,words):
+    # Recognized line boxes normally contain "50 nm". Also handle split number/unit boxes.
+    groups=[[word] for word in words if word['confidence']>=20 and word['text'].strip()]
+    for a in words:
+        if a['confidence']<20 or not re.fullmatch(r'\d+(?:[.,]\d+)?',a['text'].strip()): continue
+        ax0,ay0,ax1,ay1=a['box']; ah=max(1,ay1-ay0)
+        for b in words:
+            if b['confidence']<20 or not re.fullmatch(r'(?:nm|um|µm|μm)',b['text'].strip(),re.I): continue
+            bx0,by0,bx1,by1=b['box']
+            if -.25*ah<=bx0-ax1<=3*ah and abs((by0+by1-ay0-ay1)/2)<=.7*max(ah,by1-by0): groups.append([a,b])
     scales=[]
-    for group in groups.values():
+    for group in groups:
         s=' '.join(v['text'] for v in group).replace('μ','u').replace('µ','u')
         m=re.search(r'(\d+(?:[.,]\d+)?)\s*(nm|um)\b',s,re.I)
         if m:

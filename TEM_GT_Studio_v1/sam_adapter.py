@@ -1,11 +1,13 @@
 """Optional local-checkpoint SAM/micro-SAM. Never silently falls back to CV."""
 from pathlib import Path
 import numpy as np
+from model_paths import checkpoint_path
 
 class SamAdapter:
     def __init__(self): self.predictor=None; self.key=None
     def load(self,backend,checkpoint,model_type='vit_b',device='cpu'):
-        if not Path(checkpoint).is_file(): raise ValueError('서버 PC의 체크포인트 파일 경로를 확인하세요.')
+        checkpoint=str(checkpoint_path(checkpoint,backend,model_type))
+        if model_type not in ('vit_b','vit_l','vit_h'): raise ValueError('체크포인트 구조에 맞게 vit_b / vit_l / vit_h를 선택하세요.')
         if backend=='micro_sam':
             from micro_sam.util import get_sam_model
             self.predictor=get_sam_model(model_type=model_type,checkpoint_path=checkpoint,device=device)

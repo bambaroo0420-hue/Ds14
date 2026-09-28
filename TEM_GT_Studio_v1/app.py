@@ -8,6 +8,7 @@ from scipy import ndimage as ndi
 import cv2
 from core import Document,png,recognize,semantic_edges
 from sam_adapter import SamAdapter
+from model_paths import inventory
 
 app=Flask(__name__,static_folder='static'); app.config['MAX_CONTENT_LENGTH']=128*1024*1024
 DOCS={}; SAM=SamAdapter(); LOCK=threading.RLock(); TOKEN=secrets.token_urlsafe(24)
@@ -103,7 +104,9 @@ def accept():
     d=current(); d.accept(int(request.json.get('other',0))); return jsonify(state(d))
 @app.post('/api/ocr')
 def ocr():
-    d=current(); result=recognize(d.image,request.json.get('tesseract') or None); d.push(); d.meta['ocr']=result; return jsonify(result)
+    d=current(); a=request.json
+    with LOCK: result=recognize(d.image,a.get('model_dir') or 'models/easyocr',a.get('language','en'))
+    d.push(); d.meta['ocr']=result; return jsonify(result)
 @app.post('/api/exclude_ocr')
 def excludeocr():
     d=current(); a=request.json; ocr=d.meta.get('ocr'); boxes=[w['box'] for w in (ocr.get('words',[]) if isinstance(ocr,dict) else [])]
@@ -130,6 +133,8 @@ def scale():
 @app.post('/api/review')
 def review():
     d=current(); d.meta['reviewed']=bool(request.json['reviewed']); return jsonify(state(d))
+@app.get('/api/models')
+def models(): return jsonify(files=inventory())
 @app.post('/api/sam_load')
 def samload():
     a=request.json

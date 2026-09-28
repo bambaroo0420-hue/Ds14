@@ -30,7 +30,7 @@ $('loadsam').onclick=()=>busy(async()=>{await api('sam_load',{backend:$('backend
 $('sam').onclick=()=>busy(async()=>{await update(await api('sam',{cid:val('cid'),points,roi,crop:check('crop'),batch:check('batch'),sigma:val('samsigma')}));points=[];draw();});
 function refine(isLine){return busy(async()=>{if(isLine&&(!roi||path.length<2))throw Error('ROI와 계면선 2점 이상을 지정하세요.');await update(await api('refine',{cid:val('cid'),line:isLine?path:null,roi,width:val('width'),continuity:val('continuity'),sigma:val('sigma'),contrast:val('contrast')}));status('미리보기 완료: 초기 / Peak / DP를 비교 후 적용하세요.');});}
 $('refine').onclick=()=>refine(false);$('refineline').onclick=()=>refine(true);$('accept').onclick=()=>busy(async()=>update(await api('accept',{other:val('other')})));
-$('ocr').onclick=()=>busy(async()=>{ocrResult=await api('ocr',{tesseract:$('tesseract').value});setCandidates();draw();status(`문자 ${ocrResult.words.length}개, 바 후보 ${ocrResult.candidates.length}개. 확인 후 확정하세요.`);});$('candidates').onchange=draw;
+$('ocr').onclick=()=>busy(async()=>{ocrResult=await api('ocr',{model_dir:$('ocrdir').value,language:$('ocrlang').value});setCandidates();draw();status(`문자 ${ocrResult.words.length}개, 바 후보 ${ocrResult.candidates.length}개. 확인 후 확정하세요.`);});$('candidates').onchange=draw;
 $('scalecandidate').onclick=()=>busy(async()=>{let c=ocrResult?.candidates?.[$('candidates').value];if(!c)throw Error('후보 없음: 두 끝점을 직접 지정하세요.');await update(await api('scale',{points:c.points,nm:c.nm,bar_box:c.box}));});
 $('scalemanual').onclick=()=>busy(async()=>{if(scalepts.length!==2)throw Error('스케일바 모드로 두 끝점을 찍으세요.');let [a,b]=scalepts;await update(await api('scale',{points:scalepts,nm:val('nm'),bar_box:[Math.min(a[0],b[0]),Math.min(a[1],b[1])-2,Math.max(a[0],b[0]),Math.max(a[1],b[1])+2]}));});
 $('scaledirect').onclick=()=>busy(async()=>update(await api('scale',{nm_per_pixel:val('nmpp')})));
@@ -43,3 +43,8 @@ for(let x of ['showmask','showsp','showedge','showinitial','showpeak','showfinal
 document.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;if(e.key==='Enter'&&$('mode').value==='polygon')$('finish').click();if(e.key==='Escape'){$('clear').click();}if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();$('undo').click();}});
 new ResizeObserver(()=>{cv.width=$('view').clientWidth;cv.height=$('view').clientHeight;draw();}).observe($('view'));
 (async()=>{token=(await(await fetch('/api/session')).json()).token;await refreshDocs();})();
+
+async function scanWeights(){let r=await fetch('/api/models'),j=await r.json();if(!r.ok)throw Error(j.error);$('localweights').replaceChildren();let o=document.createElement('option');o.value='';o.textContent='폴더의 가중치 선택';$('localweights').append(o);for(let path of j.files){let a=document.createElement('option');a.value=path;a.textContent=path;$('localweights').append(a);}}
+$('scanweights').onclick=()=>busy(scanWeights);
+$('localweights').onchange=()=>{let p=$('localweights').value;if(!p)return;$('checkpoint').value=p;$('backend').value=p.includes('/micro_sam/')?'micro_sam':'segment_anything';let m=p.match(/vit_([blh])/);if(m)$('model').value='vit_'+m[1];};
+scanWeights().catch(e=>status(e.message));
