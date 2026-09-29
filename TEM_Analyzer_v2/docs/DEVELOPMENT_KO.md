@@ -69,6 +69,11 @@ v2.2.3 프롬프트 검수 gate 모사 테스트는 `node tests/ui_prompt_batch.
 
 ## 수정 시 주의
 
+v2.2.7: `python -B -m unittest discover -s tests -p test_rotation_comparison.py`, `node tests/ui_rotation_compare.cjs`.
+실제 저장 mask 기준 비교: `tools/compare_rotation_references.py --project <기존 프로젝트> --output <새 폴더>`.
+일괄 실패격리/재시도: `tools/validate_batch_recovery.py --project <비교 후 프로젝트> --output <새 폴더>`; 생성 이름 synthetic 영상과 target 집합이 있는 검증 fixture 전용입니다.
+스케일1nm/px와 GT검수는 이 도구가 생성 fixture에만 부여합니다. 회사 프로젝트를 지정하지 마세요. 원본은 복사해 보존합니다.
+
 v2.2.6 사전정렬 회귀: `python -B -m unittest discover -s tests -p test_roi_alignment.py`.
 `node tests/ui_metrology_loading.cjs`로 비교 이미지 실패/timeout/늦은 완료를 검사합니다. 실제 브라우저 영상 표시 검증도 필요합니다.
 `tools/compare_oriented_roi.py --source <roi-compare 결과폴더> --checkpoint <pth> --output <새 폴더>`는 실제 SAM 비교입니다.

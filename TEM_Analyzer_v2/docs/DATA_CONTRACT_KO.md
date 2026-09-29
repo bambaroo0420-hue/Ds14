@@ -90,3 +90,9 @@ v2.2.6 prompt `align_positive` 기본 false, `box_margin` 0~200px. 양성점 최
 `roi_alignment`의 local_to_aligned/aligned_to_local은 원본 ROI 내부좌표 행렬입니다. original_roi에 전역 offset을 보존합니다.
 원본 크기 mask로 저장하며 bilinear 확률 복원→모델threshold, support 밖0. 원본 점 위반을 다시 검사하고 aligned logits/context는 저장하지 않습니다.
 사전정렬 fit/score/경고는 전문가 GT나 최종 회전 확정의 대체물이 아닙니다. 기존 inference_domains의 unknown 정책을 유지합니다.
+
+v2.2.7 rotation/compare의 rows는 proposed/failed, 각각 config와 각도/잔차/경고 또는 error를 보존합니다. 모든 제안 needs_review=true입니다.
+영상 주 방향의 point_count는 null(가상 방향 끝점을 실제 표본으로 세지 않음). max_angle_gap_deg는 180° 주기 최소차의 최대값이며 신뢰도 점수가 아닙니다.
+비교만으로 revision/Undo/alignments/measurements/GT를 변경하지 않습니다. 채택은 기존 preview를 호출해 confirmed=false인 새 회전을 저장합니다.
+일괄 rows의 skipped는 blocked_by/error가 있으며 done에 포함됩니다. done은 terminal 처리 수, 성공 수는 status=done 행 수입니다.
+실패 이미지의 나머지 단계를 성공 처리하지 않고 건너뜁니다. 취소/중단의 미시작 단계는 skipped로 추가하지 않습니다.

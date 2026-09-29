@@ -1,3 +1,4 @@
+import {mountRotationComparison} from './rotation_compare.js?v=2.2.7';
 // Decode off-screen first so a comparison is never presented as ready while
 // its image is still loading. This does not repair an incorrect server image.
 export function prepareComparisonImage(url,label,timeoutMs=15000){
@@ -41,6 +42,7 @@ export function mountMetrology(T) {
   function measurementConfig(){return {scope_id:T.scopeId(),layer_id:+$('measureLayer').value,axis:$('measureAxis').value,start:+$('measureStart').value,
     stop:$('measureStop').value===''?null:+$('measureStop').value,step:+$('measureStep').value,instance_id:$('measureInstance').value||null,
     sampling:{mode:$('measureSampling').value,center_fraction:+$('measureCenter').value/100,min_length_px:+$('measureMinimum').value,single_interval_only:$('measureSingle').checked,reject_frame_endpoints:$('measureFrame').checked}}}
+  mountRotationComparison(T,rotationConfig);
   const statusName=s=>({ok:'유효',no_intersection:'교차 없음',invalid_region:'무효 영역',outside_component_window:'선택 구간 밖',multiple_intervals:'다중 교차',frame_endpoint:'프레임 접촉',below_min_length:'최소 길이 미만'}[s]||s);
   const number=v=>v==null?'—':Number(v).toFixed(3);
   function savedDescription(m){

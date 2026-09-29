@@ -88,6 +88,37 @@ def alignment_current(project,iid):
     return value
 
 
+def compare_alignment(project,iid,config):
+    """Non-mutating alternatives. Agreement/low residual is NOT material GT."""
+    _,_,items,_=target_masks(project,iid,config)
+    plans=[('현재 설정',copy.deepcopy(config))]
+    for edge in ('top','bottom'):
+        plans.append(('자동 '+('위쪽' if edge=='top' else '아래쪽'),dict(config,mode='auto',edge=edge,points=[])))
+    plans.append(('영상 주 방향 (실험)',dict(config,mode='image_direction',points=[])))
+    if len(items)==1:
+        points=[p[:2] for p in (items[0].get('prompts') or {}).get('points',[]) if len(p)==3 and p[2]==1]
+        if len(points)>=2:
+            plans.append(('저장 SAM 양성점 방향 (경계 정답 아님)',dict(config,mode='points',points=points,roi=None)))
+    if config.get('mode')!='points' and len(config.get('points') or [])>=2:
+        plans.append(('입력한 대응점',dict(config,mode='points')))
+    rows=[];seen=set()
+    for name,cfg in plans:
+        key=json.dumps(cfg,sort_keys=True)
+        if key in seen:continue
+        seen.add(key)
+        try:
+            value=alignment(project,iid,cfg);fit=value['fit'];warnings=list(value['warnings'])
+            if cfg.get('mode')=='points':warnings.append('점 방향은 사용자가 지정한 기준입니다. 두 점의 잔차 0이나 SAM 양성점 방향 일치는 물질 경계 정확도를 증명하지 않습니다.')
+            rows.append(dict(name=name,status='proposed',config=cfg,angle_deg=value['transform']['angle_deg'],
+                             residual_px=fit['residual_px'],point_count=None if value['resolved_mode']=='image_direction' else len(fit.get('points',[])),anisotropy=fit['anisotropy'],
+                             needs_review=True,warnings=warnings))
+        except ValueError as exc:rows.append(dict(name=name,status='failed',config=cfg,error=str(exc)))
+    angles=[r['angle_deg'] for r in rows if r['status']=='proposed']
+    gap=max((abs((a-b+90)%180-90) for a in angles for b in angles),default=0.)
+    return dict(image_id=iid,input_hash=fingerprint(project,iid),rows=rows,max_angle_gap_deg=float(gap),
+                note='비교는 기존 회전/계측/GT를 변경하지 않습니다. 작은 잔차나 방식 간 일치만으로 자동 정답을 고르지 않습니다. 선택 후 원본·회전 영상을 확인하세요.')
+
+
 def measurement_hash(project,iid):
     reviews={k:v.get('review_hash') for k,v in project.state.get('mask_scopes',{}).get(iid,{}).items()}
     data=['contour_validity_v3',fingerprint(project,iid),project.state.get('alignments',{}).get(iid),project.state['scale'].get(iid),reviews]

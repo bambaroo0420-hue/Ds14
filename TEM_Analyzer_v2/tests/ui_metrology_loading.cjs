@@ -7,7 +7,7 @@ class Image{
  removeAttribute(){this.src=''}
 }
 const context=vm.createContext({Image,setTimeout,clearTimeout,Promise,Error});
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/modules/metrology.js'),'utf8').replaceAll('export function','function')+'\nthis.prepare=prepareComparisonImage;',context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/modules/metrology.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function')+'\nthis.prepare=prepareComparisonImage;',context);
 (async()=>{
  let done=false,p=context.prepare('ready.png','원본',1000).then(r=>{done=true;return r});
  await Promise.resolve();assert(!done);const first=images.at(-1);await first.onload();assert.equal((await p).src,'ready.png');assert(!first.onload&&!first.onerror);

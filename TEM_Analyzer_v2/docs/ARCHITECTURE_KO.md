@@ -85,3 +85,7 @@ v2.2.6 `roi_alignment.prepare/restore`는 독립 ROI 입력만 사전정렬합�
 확률을 original ROI로 역보간하고 모델 threshold를 적용합니다. aligned logits/context는 폐기해 좌표가 다른 다음 예측에 재사용하지 않습니다.
 원본 candidate와 crop guard 계약은 그대로 유지하세요. 자동 box는 SAM 힌트이지 mask 강제 clipping 영역이 아닙니다.
 UI 비교창은 `prepareComparisonImage` load/decode를 기다립니다. 실패/timeout 이후 늦은 callback이 창을 다시 열지 않도록 단일 settle을 유지하세요.
+
+v2.2.7 `compare_alignment`는 기존 alignment를 고정 비교 계획으로 여러 번 호출하지만 state를 바꾸지 않습니다.
+`rotation_compare.js`가 표를 표시하고 선택 시 별도 preview를 실행합니다. 비교 API를 checkpoint에서 제외하되 project gate/busy 보호는 유지하세요.
+JobManager의 skipped행은 앞 단계 실패로 실행하지 않은 작업입니다. 완료 표본·성공 단계가 아니며 후속 영상은 계속 처리합니다.

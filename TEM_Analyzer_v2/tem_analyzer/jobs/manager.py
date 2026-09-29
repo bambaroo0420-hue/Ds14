@@ -46,7 +46,7 @@ class JobManager:
         job=self.current;job['status']='running'
         try:
             for iid in job['image_ids']:
-                for stage in job['steps']:
+                for stage_index,stage in enumerate(job['steps']):
                     if job['cancel_requested']:break
                     job['active_image']=iid;job['active_stage']=stage
                     async with self.gate:
@@ -60,7 +60,11 @@ class JobManager:
                             self.project.state=before
                             self.project.state['jobs'][-1]=job
                             job['rows'].append(dict(image_id=iid,stage=stage,status='failed',error=str(exc)))
-                            job['done']+=1;self.project.save();break
+                            job['done']+=1
+                            for pending in job['steps'][stage_index+1:]:
+                                job['rows'].append(dict(image_id=iid,stage=pending,status='skipped',blocked_by=stage,error=f'{stage} 단계 실패로 실행하지 않았습니다. 원인 해결 후 실패 재시도하세요.'))
+                                job['done']+=1
+                            self.project.save();break
                         job['done']+=1;self.project.save()
                     await asyncio.sleep(0)
                 if job['cancel_requested']:break

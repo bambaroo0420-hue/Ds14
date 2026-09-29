@@ -253,3 +253,32 @@
 1. 첨부에서회전한fit불안정시수동두점/각mask대표점등기존회전기준과비교,선택후보의잘못된경계와영상방향추정을구분. 양성점사전정렬값을최종회전정답으로자동확정하지말기.
 2. 선택mask일괄실패격리/저장복원/내보내기 등 마무리검수. ROI일괄레시피는아직없음. 새기능범위확장보다회귀/제한문서화우선.
 3. 종료07:39:53KST(22:39:53UTC)새실험중지,최종MD/heartbeat tem-v2-5비활성화. 현재06:18전후로예약계속유지.
+
+### 06:23 KST — v2.2.6 게시 완료
+
+- 기존branch/PR #1: commit `0bc0e2076a9fb659c376658ae7a19b047cab1eb4`, tree `482faa540b7b73e09f4a6ff66cc6264a3d7b0cc7`, parent `a72dc79185ebcd5c4de7d0abfbab1d088dc7c1a5`. 소스23개파일별읽기/원격로컬tree일치/nonforce게시,fetch/update-ref후Git깨끗함. main미병합.
+- Desktop128PythonPASS33.392s/Node3종PASS/pipcheckPASS/manifest156. docs/V226_REVIEW_KO.md에78실제추론/좌표계/실패/최종회귀포함. 영상/모델/결과프로젝트미게시.
+- 마지막GUI새스타일이캐시되어간격이없던현상: CSS query2.2.6-r1→테스트탭새로고침후간격/기본unchecked확인. 버튼실제명칭은'부모 없이 ROI 확대 분할';문서수정. 이후TaOx저장결과41.1896잔차6.97미확정복원확인.
+- 사용자앱8876 모델미로드/작업0/정확한CLI확인후본인PID30096만재시작. 새PID22308/exec40531, Desktopcwd/test-output/crop19-v22/project그대로. HTTP200/v226/style-r1/새alignmentAPI/영상5개확인. 사용자브라우저임의새로고침안함.
+- GUI8888 PID26636/session38795 ViT-B CPU로드유지. CUAorientedTab226 id12 handoff. 이전테스트서버는종료하지않음. 증거는workspace/evidence-v226에보존.
+- 현재06:23KST, 종료07:39:53KST까지약1시간17분. heartbeat tem-v2-5계속활성. 다음반복은위후보검증또는최종실패격리/문서정리로이어가고78SAM반복금지. 마지막게시메타데이터는staging기록이며다음게시때포함한다.
+
+### 06:39 KST 전후 — v2.2.7 회전 기준 비교·일괄 실패 처리 검증
+
+- 보존실제SAM5후보×전체/고정내부ROI×4기준=40방향 제안. 신규SAM0회. 회전비교 API는project/revision/Undo/기존회전·계측·GT불변. 표에서선택시별도preview,자동확정없음.
+- TaOx후보5:위41.1896(잔차6.9715),아래−.9381(17.6842),영상방향44.1441,저장양성점44.9961(.4263). 후보2:위44.9181인데아래18.0952로불일치. TiOxNy위46.9182/아래48.6541/영상44.1441/점45. 생성45는모두−45. 공개140은3.0610/2.3600/1.6643/2.2270.
+- 내부ROI[.3,.1,.6,.9]의첨부영상방향88.4171실패,TaOx후보5위39.1477/아래59.9526. 좁은ROI가자동개선이라는가정금지. 자세한수치rotation-reference-v227/results.json/V227_REVIEW_KO.md.
+- 일괄실패시뒤단계행누락/진행률불일치수정:skipped+blocked_by기록,done은성공+실패+건너뜀. 취소의미시작작업은완료로세지않음. retry는failed이미지·단계만,앞성공단계보존.
+- 실제저장마스크4장,target부분GT+계측:미검수4실패+계측4skip=8/8. 생성영상1장만scope/회전/1nm/px확정후실제retry API:성공2/실패3/skip3=8/8. 후보5개레이어미배정유지. 생성부분GT unknown784506/valid1926,ZIP확인.
+- 생성3px실제SAM계측mean4.68981565/median4.94974747px,step3유효137/무효4/교차없음342. 분할과계측과대오차미해결. 실제영상에가짜GT/축척미확정.
+- 실제GUI8889:비교표→양성점방향선택→44.9961잔차.43미확정→양쪽영상로드완료. 시각수평에가까워졌으나경계정확도성공아님. 전체GT+계측8/8(성공2실패3skip3),실패재시도6/6(실패3skip3)로이미완료생성영상재실행안함. GUIstep10생성mean4.68123264px,유효41/무효1/교차없음103.
+- staging133PythonPASS25.958초/Node4종PASS. 초기새Node는jsdom부재→새설치없이최소DOM모사전환. 후속Python명령cwd실수import실패→앱cwd정정5PASS. 프로그램실패와분리기록.
+- 영상방향의가상2끝점은point_count=null로마지막표시보완. 테이블padding/CSSquery2.2.7-r1. 최종5테스트PASS. Desktop최종검증/동기화/게시예정.
+- 최종GUI새서버에서영상방향'— / —'와표간격확인/비교시Undo불변. Desktop133PASS26.000초/Node4종PASS/pipcheckPASS/manifest162. 게시준비.
+- 테스트8889모델미로드,원본copy rotation-ui-v227. 본인PID23000→최종PID30256/exec94208로안전재시작. CUArotationTab227 id13handoff. 증거evidence-v227/rotation-methods.png,point-direction-unconfirmed.png,batch-skipped-retry.png. JS오류없음.
+
+#### 다음 반복 후보
+
+1. 후보방향합의와측정정확도분리유지. 첨부분절/누출미해결로자동GT완료주장금지. 독립ROI일괄레시피여전히미지원.
+2. 종료까지약1시간남음. 전체사용자의도차이/설치·모듈문서·최종하나의종합보고서 준비,남은시간내확실히마칠수있는검증만수행.
+3. 종료07:39:53KST(22:39:53UTC)후새실험금지. 진행작업안전마무리/최종MD/heartbeat tem-v2-5비활성화필수. 현재06:39로예약유지.

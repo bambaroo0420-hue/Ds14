@@ -12,8 +12,9 @@ export function mountBatch(T,metrology) {
       const jobs=await T.api('workflow/jobs',null,'GET'),job=jobs.at(-1);
       if(job){
         lastId=job.id;$('jobProgress').value=job.done;$('jobProgress').max=job.total;
-        $('jobInfo').textContent=`${job.status} · ${job.done}/${job.total} · ${job.active_stage||''}`;
-        $('jobRows').textContent=job.rows.map(r=>`${T.state.images[r.image_id]?.name||r.image_id} · ${r.stage} · ${r.status}${r.error?' · '+r.error:''}`).join('\n');
+        const counts=status=>job.rows.filter(r=>r.status===status).length;
+        $('jobInfo').textContent=`${job.status} · 처리 ${job.done}/${job.total} (성공 ${counts('done')}, 실패 ${counts('failed')}, 건너뜀 ${counts('skipped')}) · ${job.active_stage||''}`;
+        $('jobRows').textContent=job.rows.map(r=>`${T.state.images[r.image_id]?.name||r.image_id} · ${r.stage} · ${r.status}${r.error?' · '+r.error:''}${r.stage==='rotation'&&r.result?` · ${r.result.angle_deg.toFixed(4)}° · 잔차 ${r.result.residual_px==null?'해당 없음':r.result.residual_px.toFixed(2)+'px'} · 미확정 · ${(r.result.warnings||[]).join(' ')}`:''}`).join('\n');
         const running=['queued','running','cancelling'].includes(job.status);
         $('cancelJob').disabled=!running;$('startJob').disabled=running;
         if(running){timer=setTimeout(poll,800);return}

@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from ..algorithms.annotations import propose_annotations
 from ..algorithms.metrology import warp
 from ..services.layers import active, unions, fingerprint, inspect_conflicts, propose_boundaries, apply_boundaries, transfer_layers
-from ..services.measurement import alignment, alignment_current, run_measurement, measurement_hash
+from ..services.measurement import alignment, alignment_current, run_measurement, measurement_hash, compare_alignment
 from ..services.scopes import save_scope, confirm_scope, require_scope_review, scope_arrays
 from ..services.prompt_transfer import save_preset, preview_preset
 from ..services.prompt_batches import prepare_transfer,run_transferred
@@ -104,7 +104,8 @@ def install(app,project,model,model_lock,gate):
             return {'changed_pixels':result['changed_pixels'],'reports':result['reports'],'status':'needs_review'}
         if stage=='rotation':
             value=alignment(project,iid,settings.get('rotation',{}));project.state['alignments'][iid]=value
-            return {'angle_deg':value['transform']['angle_deg'],'needs_review':True}
+            return {'angle_deg':value['transform']['angle_deg'],'residual_px':value['fit']['residual_px'],
+                    'needs_review':True,'warnings':value['warnings'],'confirmed':False}
         if stage=='measurement':
             value=run_measurement(project,iid,settings.get('measurement',{}));project.state['measurements'][iid]=value
             return value['summary']
@@ -240,6 +241,10 @@ def install(app,project,model,model_lock,gate):
     def rotation_preview(body:dict):
         iid=body['image_id'];value=alignment(project,iid,body['config']);project.state['alignments'][iid]=value
         return value
+
+    @app.post('/api/workflow/rotation/compare')
+    def rotation_compare(body:dict):
+        return compare_alignment(project,body['image_id'],body['config'])
 
     @app.post('/api/workflow/rotation/confirm')
     def rotation_confirm(body:dict):
