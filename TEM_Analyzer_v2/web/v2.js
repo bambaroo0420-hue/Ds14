@@ -10,7 +10,7 @@ $('filterBranch').onchange=loadFilterControls;
 $('saveFilter').onclick=()=>task(async()=>{await api('v2/filters',{image_id:current,branch:$('filterBranch').value,config:{enabled:$('filterEnabled').checked,method:$('filterMethod').value,sigma:+$('filterSigma').value,range_sigma:+$('filterRange').value,contrast:+$('filterContrast').value}});await refresh();say('현재 이미지 전처리 저장됨')});
 $('previewFilter').onclick=()=>task(async()=>{const id=current;const im=await new Promise((resolve,reject)=>{let img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('미리보기 실패'));img.src=`/api/v2/filter/${id}/${$('filterBranch').value}.png?${Date.now()}`});if(current===id){base=im;redraw()}});
 $('originalFilter').onclick=()=>task(async()=>{await loadImage();redraw()});
-$('editSAM').onclick=()=>task(async()=>{if(!selected())throw Error('수정할 후보를 선택하세요');let x=await api('sam/prompt',{image_id:current,parent:selected(),mode:'edit',points,box});await refresh();$('candidateSelect').value=x.id;await loadMask();say('수정 제안입니다. 부모 교체로 확정하거나 취소하세요')});
+$('editSAM').onclick=()=>task(async()=>{if(!selected())throw Error('수정할 후보를 선택하세요');await ensureAnalysisRegions();let x=await api('sam/prompt',{image_id:current,parent:selected(),mode:'edit',points,box});await refresh();$('candidateSelect').value=x.id;await loadMask();say('수정 제안입니다. 부모 교체로 확정하거나 취소하세요')});
 $('cancelCandidate').onclick=()=>task(async()=>{const c=(state.candidates[current]||[]).find(c=>c.id===selected());if(!c||c.layer_id!==null)throw Error('레이어에 지정되지 않은 미확정 후보만 취소할 수 있습니다');await api('candidates/'+current+'/'+c.id,null,'DELETE');await refresh()});
 $('assign').onclick=()=>task(async()=>{const c=(state.candidates[current]||[]).find(c=>c.id===selected());if(!c)throw Error('후보를 선택하세요');const mode=c.parent?$('assignMode').value:'add';await api('layers/assign',{image_id:current,candidate_id:c.id,layer_id:+$('layerSelect').value,instance_id:$('instance').value||null,reviewed:true,mode,replace_id:c.parent});await refresh();$('candidateSelect').value=c.id;await loadMask()});
 $('lockLayer').onclick=()=>task(async()=>{let layer=state.layers.find(l=>l.id===+$('layerSelect').value);if(!layer)throw Error('레이어를 선택하세요');await api('v2/lock',{layer_id:layer.id,locked:!layer.locked});await refresh();say(layer.locked?'레이어 잠금 해제':'레이어 잠금')});
@@ -41,7 +41,7 @@ $('exportGT').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 �
 async function evaluate(csv=false){const r=await api('v2/evaluate',{image_id:current,candidate_id:selected(),reference_id:+$('reference').value,tolerance:+$('tolerance').value,csv});if(csv)downloadBlob(await r.blob(),'evaluation.csv');else $('evaluation').textContent=JSON.stringify(r,null,2)}
 $('evaluate').onclick=()=>task(()=>evaluate());$('evaluateCSV').onclick=()=>task(()=>evaluate(true));
 // The modal's inference must also freeze navigation and image deletion.
-const originalROIRun=roiEditor.run.bind(roiEditor);roiEditor.run=()=>task(originalROIRun);
+const originalROIRun=roiEditor.run.bind(roiEditor);roiEditor.run=async()=>{await task(originalROIRun);roiEditor.updateButtons()};
 
 function initializeV2(){return task(()=>refresh())}
 

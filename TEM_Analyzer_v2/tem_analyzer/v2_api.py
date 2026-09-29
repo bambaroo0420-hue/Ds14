@@ -90,6 +90,7 @@ def install(app,project,model,model_lock):
             if mutating and 'application/json' in request.headers.get('content-type',''):
                 try:body=await request.json()
                 except Exception:pass
+            if (path=='/api/sam/prompt' and body.get('preview')) or (path.startswith('/api/roi-previews/') and request.method=='DELETE'):transactional=False;before=None
             if transactional:project.checkpoint(path)
             try:
                 response=await call_next(request)

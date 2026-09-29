@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 let state={},current=null,base=new Image(),mask=new Image(),coverage=new Image(),showCov=false,tint=null,points=[],box=null,roi=null,strokes=[],activeStroke=null,drag=null,scaleDraft=null,textDraft=[],zoom=1,panX=0,panY=0,fit=1;
 let gridPoints=[],mlPoints=[],displayMode='candidate',overlayVersion=0,loadedImage=null;
-let templateDraft=null;
+let templateDraft=null,analysisRegionDraft=null;
 let preprocessingPreview=null,preprocessingVersion=0,activePage='images';
 let uiBusy=false;
 let candidateSort={key:'id',direction:1},scaleBar=null,barProposals=[],imageSwitchBusy=false;
@@ -88,13 +88,13 @@ async function deleteCurrentImage(){if(!current)return;if(!confirm('현재 이�
 $('deleteImage').onclick=()=>task(deleteCurrentImage);$('deleteLoadedImage').onclick=()=>task(deleteCurrentImage);
 $('clearLoadedImages').onclick=()=>task(async()=>{const count=Object.keys(state.images).length;if(!count)return;if(!confirm(`${count}개 이미지와 모든 후보·스케일·검수 기록을 프로젝트에서 비울까요? 템플릿과 모델 설정은 유지됩니다.`))return;const result=await api('images',null,'DELETE');if(Object.keys(result.failed||{}).length){await refresh();throw Error('일부 이미지 삭제 실패: '+JSON.stringify(result.failed))}for(const id of Object.keys(imageDrafts))delete imageDrafts[id];loadedImage=null;current=null;points=[];gridPoints=[];mlPoints=[];box=null;roi=null;strokes=[];scaleBar=null;tint=null;preprocessingPreview=null;await refresh()});
 $('imageSelect').onchange=e=>switchImage(e.target.value);$('candidateSelect').onchange=()=>task(async()=>{strokes=[];await loadMask()});$('layerSelect').onchange=()=>task(()=>loadLayer());$('showLayer').onclick=()=>task(()=>loadLayer());
-$('templateSelect').onchange=e=>task(async()=>{await api('templates/select',{id:e.target.value});templateDraft=null;scaleDraft=null;textDraft=[];await refresh();redraw()});
+$('templateSelect').onchange=e=>task(async()=>{await api('templates/select',{id:e.target.value});analysisRegionDraft=state.templates[e.target.value];templateDraft=null;scaleDraft=null;textDraft=[];await refresh();redraw()});
 function currentTemplateDraft(){
  let previous=templateDraft||state.templates[state.selected_template];
  let norm=r=>r.map((v,i)=>Math.max(0,Math.min(1,v/(i%2?base.height:base.width))));
  return {...previous,id:previous.id,name:$('templateName').value||previous.name,scale_roi:scaleDraft?norm(scaleDraft):previous.scale_roi,text_rois:[...previous.text_rois,...textDraft.map(norm)]};
 }
-async function storeTemplate(t){await api('templates',t);templateDraft=null;scaleDraft=null;textDraft=[];await refresh();redraw();say('템플릿 저장됨')}
+async function storeTemplate(t){await api('templates',t);analysisRegionDraft=t;templateDraft=null;scaleDraft=null;textDraft=[];await refresh();redraw();say('템플릿 저장됨')}
 $('saveTemplate').onclick=()=>task(()=>storeTemplate(currentTemplateDraft()));
 $('newTemplate').onclick=()=>task(async()=>{let name=prompt('새 템플릿 이름','새 템플릿');if(!name?.trim())return;await storeTemplate({id:'tpl_'+Date.now(),name:name.trim(),scale_roi:null,text_rois:[]})});
 $('copyTemplate').onclick=()=>task(async()=>{let t=currentTemplateDraft();let name=prompt('복사할 템플릿 이름',t.name+' 복사');if(!name?.trim())return;t.id='tpl_'+Date.now();t.name=name.trim();await storeTemplate(t)});
@@ -105,15 +105,15 @@ $('manualScale').onclick=()=>task(async()=>{if(!current||!scaleBar)throw Error('
 $('autoScale').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let r=await api('scale/detect',{image_id:current,ocr_dir:$('ocrDir').value,language:'en'});await refresh();restoreScale();say(r.nm_per_px?'스케일 제안값과 바 위치를 확인하세요':'OCR 제안 실패. 바 검출과 실제 길이 입력을 사용하세요')});
 $('confirmScale').onclick=()=>task(async()=>{await api('scale/confirm',{image_id:current});await refresh()});
 $('loadModel').onclick=()=>task(async()=>{let r=await api('model/load',{checkpoint:$('checkpoint').value,variant:$('variant').value,device:$('device').value,decoder_path:$('decoder').value||null,refiner_path:$('refiner').value||null});await refresh();say('모델 로드: '+r.variant+' / '+r.device)});
-$('automatic').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let r=await api('prompts/grid',{image_id:current,grid:+$('grid').value});gridPoints=r.points;updatePromptCount();redraw();say('Grid 점 준비 완료. 추가점을 넣은 뒤 SAM 실행을 누르세요.')});
+$('automatic').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');await ensureAnalysisRegions();let r=await api('prompts/grid',{image_id:current,grid:+$('grid').value});gridPoints=r.points;updatePromptCount();redraw();say('Grid 점 준비 완료. 추가점을 넣은 뒤 SAM 실행을 누르세요.')});
 $('clearPrompts').onclick=()=>{points=[];gridPoints=[];mlPoints=[];box=null;updatePromptCount();redraw()};
-$('suggestML').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let r=await api('prompts/ml',{image_id:current,existing:[...gridPoints,...mlPoints,...points.map(p=>p.slice(0,2))],count:+$('mlCount').value,clusters:+$('mlClusters').value,min_distance:+$('mlDistance').value});mlPoints.push(...r.points);updatePromptCount();redraw();say(r.count+'개 ML 추가점 제안. 위치를 확인하세요.')});
-$('executeSAM').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let r=await api('sam/prepared',{image_id:current,auto_points:[...gridPoints,...mlPoints],manual_points:points,box,manual_mode:$('manualMode').value,pred_iou:+$('pred').value,stability:+$('stability').value,nms:+$('nms').value});displayMode='candidate';await refresh();if(r.created.length){$('candidateSelect').value=r.created[0].id;await loadMask()}say(r.count+'개 후보 생성')});
+$('suggestML').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');await ensureAnalysisRegions();let r=await api('prompts/ml',{image_id:current,existing:[...gridPoints,...mlPoints,...points.map(p=>p.slice(0,2))],count:+$('mlCount').value,clusters:+$('mlClusters').value,min_distance:+$('mlDistance').value});mlPoints.push(...r.points);updatePromptCount();redraw();say(r.count+'개 ML 추가점 제안. 위치를 확인하세요.')});
+$('executeSAM').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');await ensureAnalysisRegions();let r=await api('sam/prepared',{image_id:current,auto_points:[...gridPoints,...mlPoints],manual_points:points,box,manual_mode:$('manualMode').value,pred_iou:+$('pred').value,stability:+$('stability').value,nms:+$('nms').value});displayMode='candidate';await refresh();if(r.created.length){$('candidateSelect').value=r.created[0].id;await loadMask()}say(r.count+'개 후보 생성')});
 canvas.addEventListener('contextmenu',e=>{e.preventDefault();let p=coord(e),best=null;for(let list of [points,gridPoints,mlPoints])list.forEach((q,i)=>{let d=Math.hypot(p[0]-q[0],p[1]-q[1]);if(d<12/(fit*zoom)&&(!best||d<best.d))best={list,i,d}});if(best){best.list.splice(best.i,1);updatePromptCount();redraw()}});
-$('roiPrompt').onclick=()=>task(async()=>{if(!current||!selected())throw Error('후보를 선택하세요');await roiEditor.open(current,selected(),base)});
+$('roiPrompt').onclick=()=>task(async()=>{if(!current||!selected())throw Error('후보를 선택하세요');await ensureAnalysisRegions();await roiEditor.open(current,selected(),base)});
 $('duplicate').onclick=()=>task(async()=>{if(!selected())throw Error('후보를 선택하세요');let x=await api('candidates/duplicate',{image_id:current,candidate_id:selected()});await refresh();$('candidateSelect').value=x.id;await loadMask()});
 $('applyBrush').onclick=()=>task(async()=>{if(!selected()||!strokes.length)throw Error('후보와 브러시 입력을 확인하세요');let x=await api('candidates/brush',{image_id:current,candidate_id:selected(),strokes});strokes=[];await refresh();$('candidateSelect').value=x.id;await loadMask()});
-$('newLayer').onclick=()=>task(async()=>{let name=prompt('새 레이어 이름');if(!name)return;await api('layers',{name});await refresh()});
+$('newLayer').onclick=()=>task(async()=>{const layer=await api('layers',{});await refresh();$('layerSelect').value=layer.id;say(layer.name+' 생성됨. 이름 수정 버튼으로 변경할 수 있습니다.')});
 $('renameLayer').onclick=()=>task(async()=>{let id=+$('layerSelect').value;let name=prompt('레이어 이름',state.layers.find(x=>x.id===id)?.name);if(!name)return;await api('layers',{id,name});await refresh()});
 $('deleteCandidate').onclick=()=>task(async()=>{let id=selected();if(!id)throw Error('후보를 선택하세요');if(!confirm('후보 #'+id+'를 삭제할까요? 레이어에 연결되어 있으면 해당 mask도 표시에서 빠집니다.'))return;await api('candidates/'+current+'/'+id,null,'DELETE');strokes=[];await refresh()});
 $('deleteLayer').onclick=()=>task(async()=>{let id=+$('layerSelect').value;if(!id)throw Error('레이어를 선택하세요');if(!confirm('모든 이미지에서 이 레이어 지정을 해제하고 레이어를 삭제할까요? 후보 mask는 유지됩니다.'))return;await api('layers/'+id,null,'DELETE');await refresh()});
@@ -186,9 +186,26 @@ $('batchView').onchange=()=>task(async()=>{renderBatchResults();await loadPrepro
 $('batchConfirm').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');await api('preprocessing/confirm',{image_id:current});await refresh()});
 $('batchNext').onclick=()=>{const ids=Object.keys(state.images),i=ids.indexOf(current),ordered=[...ids.slice(i+1),...ids.slice(0,i+1)],next=ordered.find(id=>state.preprocessing?.[id]&&!state.preprocessing[id].reviewed);if(next)return switchImage(next)};
 
-function captureTemplateDraft(){templateDraft=currentTemplateDraft();scaleDraft=null;textDraft=[];renderRegionSummary()}
+function captureTemplateDraft(){templateDraft=currentTemplateDraft();analysisRegionDraft=templateDraft;pruneExcludedPrompts(templateDraft);scaleDraft=null;textDraft=[];renderRegionSummary()}
 function renderRegionSummary(){if(!state.templates)return;const t=currentTemplateDraft();$('regionSummary').textContent=`일괄 적용할 영역: 스케일 ${t.scale_roi?1:0}개 + 글씨 제외 ${t.text_rois.length}개${templateDraft?' (저장 전 변경 포함)':''}`;$('regionList').innerHTML=[...(t.scale_roi?[`<li>스케일 ROI <button data-region="scale">제거</button></li>`]:[]),...t.text_rois.map((r,i)=>`<li>글씨 제외 ${i+1} <button data-region="${i}">제거</button></li>`)].join('')}
 $('regionList').onclick=e=>{const b=e.target.closest('[data-region]');if(!b)return;const t=currentTemplateDraft();if(b.dataset.region==='scale')t.scale_roi=null;else t.text_rois.splice(+b.dataset.region,1);templateDraft=t;scaleDraft=null;textDraft=[];renderRegionSummary();redraw()};
 const roiEditor=new ROIEditor({api,onSaved:async item=>{displayMode='candidate';await refresh();$('candidateSelect').value=item.id;await loadMask();say('재분할 후보 #'+item.id+' 저장됨')}});
 new ResizeObserver(sizeCanvas).observe(host);refresh().then(()=>{if(typeof initializeV2==='function')return initializeV2()}).catch(e=>say(e.message));
 
+
+function regionKey(t){return JSON.stringify([t?.scale_roi||null,t?.text_rois||[],t?.scale_text_roi||null,t?.sample_roi||null,t?.magnification_roi||null])}
+function pruneExcludedPrompts(t){
+ if(!base.width||!t)return;
+ const rois=[t.scale_roi,...(t.text_rois||[]),t.scale_text_roi,t.sample_roi,t.magnification_roi].filter(Boolean);
+ const allowed=p=>!rois.some(r=>p[0]>=Math.floor(r[0]*base.width)&&p[0]<Math.floor(r[2]*base.width)&&p[1]>=Math.floor(r[1]*base.height)&&p[1]<Math.floor(r[3]*base.height));
+ gridPoints=gridPoints.filter(allowed);mlPoints=mlPoints.filter(allowed);points=points.filter(allowed);updatePromptCount();
+}
+async function ensureAnalysisRegions(){
+ if(!current)throw Error('이미지를 선택하세요');
+ const draft=(templateDraft||scaleDraft||textDraft.length)?currentTemplateDraft():analysisRegionDraft;
+ if(draft&&regionKey(draft)!==regionKey(state.preprocessing?.[current]?.template)){
+  const r=await api('preprocessing/apply',{template:draft,image_ids:[current],apply_regions:true,apply_scale:false,length:null,unit:'nm'});
+  state.preprocessing=state.preprocessing||{};state.preprocessing[current]=r.results[current];
+ }
+ pruneExcludedPrompts(draft||state.preprocessing?.[current]?.template||state.templates[state.selected_template]);redraw();
+}
