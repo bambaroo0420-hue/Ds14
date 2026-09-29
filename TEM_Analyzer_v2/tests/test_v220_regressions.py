@@ -14,6 +14,12 @@ from tem_analyzer.services.scopes import save_scope
 
 
 class ImprovementsTests(unittest.TestCase):
+    def test_image_direction_checkerboard_not_reliable(self):
+        from tem_analyzer.algorithms.orientation import image_direction
+        yy,xx=np.mgrid[:512,:512];gray=np.uint8(50+140*((xx//64+yy//64)%2))
+        r=image_direction(np.repeat(gray[...,None],3,2),np.zeros_like(gray,bool))
+        self.assertFalse(r['reliable_proposal']);self.assertLess(r['tensor_coherence'],.15)
+
     def test_merged_scale_text_box_and_material_label_not_scale(self):
         image=np.full((200,400,3),25,np.uint8);image[165:173,20:90]=255
         words=[dict(text='5 nm',box=[15,134,91,176],confidence=.9)]

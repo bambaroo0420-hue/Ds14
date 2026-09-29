@@ -48,3 +48,9 @@ UI의 새 버튼은 해당 모듈에서 한 번만 연결하고, 기존 전역 �
 
 `SOURCE_SHA256.json`은 소스의 CRLF를 LF로 정규화한 SHA-256입니다. Windows checkout 줄바꿈 차이를 무시합니다.
 소스 변경 후 `python tools/update_source_manifest.py`로 재생성합니다. 모델·프로젝트·생성 이미지는 대상이 아닙니다.
+
+v2.2.1 계측 표본 정책은 `algorithms/metrology.measure(..., sampling=...)`의 순수 배열 계산입니다.
+서비스에서 정책을 전달하고, UI와 일괄 작업은 같은 `measurementConfig()`를 사용합니다.
+새 제외 정책은 원시 행을 삭제하지 말고 `quality_flags`/`exclusion_reasons`에 추가하세요.
+값으로부터 임의로 이상치 임계값을 학습하거나 최종 길이를 조작하지 않습니다.
+알고리즘 변경으로 값의 의미가 달라지면 `services/measurement.measurement_hash`의 버전 표식도 갱신하세요.

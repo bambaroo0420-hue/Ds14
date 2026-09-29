@@ -36,6 +36,8 @@ def alignment(project,iid,config):
         from ..preprocessing import exclusion_mask
         fit=image_direction(project.image(iid),exclusion_mask(project,iid),region)
         warnings.append(fit['note'])
+        if not fit['reliable_proposal']:
+            warnings.append('방향 교차검증 불일치/분산이 큽니다. 이 각도를 자동 수평 정답으로 사용하지 말고 다른 ROI·경계·직접 기준점을 검토하세요.')
     elif mode=='points':
         points=np.asarray(config.get('points',[]),float)
         h,w=mask.shape
@@ -72,7 +74,8 @@ def alignment(project,iid,config):
     if not np.isfinite(residual_limit) or not 0<residual_limit<=100:raise ValueError('직선 잔차 기준은 0 초과~100 px입니다.')
     return dict(transform=rotation_transform(mask.shape,angle),fit=fit,config=copy.deepcopy(config),
                 input_hash=fingerprint(project,iid),confirmed=False,
-                resolved_mode=mode,used_edge=used_edge,warnings=warnings,used_roi=region,mask_reviewed=reviewed,needs_review=bool(warnings) or not reviewed or fit['residual_px']>residual_limit or fit['anisotropy']<10,
+                resolved_mode=mode,used_edge=used_edge,warnings=warnings,used_roi=region,mask_reviewed=reviewed,
+                needs_review=bool(warnings) or not reviewed or (fit['residual_px'] is not None and fit['residual_px']>residual_limit) or (fit['anisotropy'] is not None and fit['anisotropy']<10),
                 note='원본은 보존하며 회전+이동만 적용합니다. 기준 구간의 굽음은 펼치지 않습니다.')
 
 
@@ -84,7 +87,7 @@ def alignment_current(project,iid):
 
 def measurement_hash(project,iid):
     reviews={k:v.get('review_hash') for k,v in project.state.get('mask_scopes',{}).get(iid,{}).items()}
-    data=[fingerprint(project,iid),project.state.get('alignments',{}).get(iid),project.state['scale'].get(iid),reviews]
+    data=['contour_sampling_v2',fingerprint(project,iid),project.state.get('alignments',{}).get(iid),project.state['scale'].get(iid),reviews]
     return hashlib.sha256(json.dumps(data,sort_keys=True).encode()).hexdigest()
 
 
@@ -106,7 +109,7 @@ def run_measurement(project,iid,config):
     cfg=dict(config);axis=cfg.get('axis','thickness')
     maximum=rot['transform']['width' if axis=='thickness' else 'height']-1
     end=cfg.get('stop');end=maximum if end is None else float(end)
-    result=measure(m,valid&~all_conflicts,rot['transform'],axis,float(cfg.get('start',0)),end,float(cfg.get('step',10)),float(scale['nm_per_px']))
+    result=measure(m,valid&~all_conflicts,rot['transform'],axis,float(cfg.get('start',0)),end,float(cfg.get('step',10)),float(scale['nm_per_px']),cfg.get('sampling'))
     result.update(image_id=iid,layer_id=lid,scope_id=config.get('scope_id'),candidate_ids=[c['id'] for c in items],config=cfg,input_hash=measurement_hash(project,iid),
                   review_status='reviewed_masks' if reviewed else 'provisional_unreviewed_masks',
                   transform=copy.deepcopy(rot['transform']),scale=copy.deepcopy(scale),revision=project.state['revision'])

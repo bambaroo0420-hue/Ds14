@@ -98,7 +98,7 @@ def line_intervals(loops, coordinate, axis):
     return [(crossings[i],crossings[i+1]) for i in range(0,len(crossings),2) if crossings[i+1]-crossings[i]>1e-6]
 
 
-def measure(mask, valid, transform, axis, start, stop, step, nm_per_px):
+def measure(mask, valid, transform, axis, start, stop, step, nm_per_px, sampling=None):
     if axis not in ('thickness','cd'):raise ValueError('측정 방향은 thickness/cd입니다.')
     numbers = [start,stop,step,nm_per_px]
     if not np.isfinite(numbers).all() or step<=0 or stop<start or nm_per_px<=0:
@@ -106,13 +106,35 @@ def measure(mask, valid, transform, axis, start, stop, step, nm_per_px):
     bound = transform['width'] if axis=='thickness' else transform['height']
     if start<0 or stop>bound-1 or (stop-start)/step>10000:raise ValueError('회전 영상 범위 안에서 최대 10,001개 위치를 지정하세요.')
     if not mask.any():raise ValueError('측정할 마스크가 없습니다.')
-    loops=[transform_points(c,transform['matrix']) for c in mask_contours(mask)]
+    policy=dict(sampling or {})
+    mode=policy.get('mode','all');fraction=float(policy.get('center_fraction',.6))
+    minimum=float(policy.get('min_length_px',0))
+    single=policy.get('single_interval_only',False);reject_frame=policy.get('reject_frame_endpoints',False)
+    if mode not in ('all','component_center') or not np.isfinite([fraction,minimum]).all() or not 0<fraction<=1 or not 0<=minimum<=100000:
+        raise ValueError('계측 표본 방식/중앙 비율(0 초과~1)/최소 길이(0~100000 px)를 확인하세요.')
+    if not isinstance(single,bool) or not isinstance(reject_frame,bool):raise ValueError('계측 제외 옵션은 true/false여야 합니다.')
+    policy=dict(mode=mode,center_fraction=fraction,min_length_px=minimum,single_interval_only=single,reject_frame_endpoints=reject_frame)
+    # Geometric components are NOT material classes or original SAM candidate IDs.
+    labels,count=ndi.label(mask)
+    if count>512:raise ValueError('분리 객체가 512개를 넘습니다. 작은 잡음 마스크를 검토하거나 분석 대상을 나누세요.')
+    components=[];fixed=0 if axis=='thickness' else 1
+    for cid,sl in enumerate(ndi.find_objects(labels),1):
+        local=labels[sl]==cid;offset=np.array([sl[1].start,sl[0].start])
+        loops=[transform_points(c+offset,transform['matrix']) for c in mask_contours(local)]
+        coordinates=np.concatenate(loops)[:,fixed];lo,hi=float(coordinates.min()),float(coordinates.max())
+        trim=(hi-lo)*(1-fraction)/2
+        components.append(dict(component_id=cid,loops=loops,bounds=[lo,hi],window=[lo+trim,hi-trim],area_px=int(local.sum())))
     rows=[];h,w=mask.shape
     for position in np.arange(start,stop+step*1e-6,step):
-        intervals=line_intervals(loops,float(position),axis)
+        intervals=[]
+        for comp in components:
+            if not comp['bounds'][0]<=position<=comp['bounds'][1]:continue
+            spans=line_intervals(comp['loops'],float(position),axis)
+            intervals.extend((lo,hi,comp,len(spans)) for lo,hi in spans)
+        intervals.sort(key=lambda x:x[0])
         if not intervals:
             rows.append(dict(position_px=float(position),status='no_intersection',length_nm=None));continue
-        for part,(lo,hi) in enumerate(intervals):
+        for part,(lo,hi,comp,span_count) in enumerate(intervals):
             a=[position,lo] if axis=='thickness' else [lo,position]
             b=[position,hi] if axis=='thickness' else [hi,position]
             # Test the interior only: contour endpoints lie on pixel-cell boundaries.
@@ -121,11 +143,38 @@ def measure(mask, valid, transform, axis, start, stop, step, nm_per_px):
             indices=np.floor(original+.5).astype(int)
             inside=(indices[:,0]>=0)&(indices[:,0]<w)&(indices[:,1]>=0)&(indices[:,1]<h)
             ok=bool(inside.all() and valid[indices[:,1],indices[:,0]].all()) if inside.all() else False
-            rows.append(dict(position_px=float(position),segment=part,status='ok' if ok else 'invalid_region',
-                             length_px=float(hi-lo),length_nm=float((hi-lo)*nm_per_px) if ok else None,
+            endpoints=transform_points([a,b],transform['inverse'])
+            frame=bool((endpoints<=0).any() or (endpoints[:,0]>=w-1).any() or (endpoints[:,1]>=h-1).any())
+            outside=not comp['window'][0]<=position<=comp['window'][1]
+            flags=[];reasons=[]
+            if not ok:reasons.append('invalid_region')
+            if mode=='component_center' and outside:flags.append('outside_component_window');reasons.append('outside_component_window')
+            if span_count>1:
+                flags.append('multiple_intervals')
+                if single:reasons.append('multiple_intervals')
+            if frame:
+                flags.append('frame_endpoint')
+                if reject_frame:reasons.append('frame_endpoint')
+            if hi-lo<minimum:flags.append('below_min_length');reasons.append('below_min_length')
+            status=reasons[0] if reasons else 'ok'
+            rows.append(dict(position_px=float(position),segment=part,component_id=comp['component_id'],status=status,
+                             quality_flags=flags,exclusion_reasons=reasons,
+                             length_px=float(hi-lo),raw_length_nm=float((hi-lo)*nm_per_px),length_nm=float((hi-lo)*nm_per_px) if status=='ok' else None,
                              aligned_endpoints=[list(map(float,a)),list(map(float,b))],
-                             original_endpoints=transform_points([a,b],transform['inverse']).tolist()))
+                             original_endpoints=endpoints.tolist()))
     values=[r['length_nm'] for r in rows if r['status']=='ok']
+    counts={status:sum(r['status']==status for r in rows) for status in sorted({r['status'] for r in rows})}
+    warnings=[]
+    if any('multiple_intervals' in r.get('quality_flags',[]) for r in rows):warnings.append('동일 연결 객체에 다중 교차가 있습니다. 구멍/분기 구간을 전체 층 두께로 해석하지 마세요.')
+    if any('frame_endpoint' in r.get('quality_flags',[]) for r in rows):warnings.append('영상 프레임에 닿는 끝점이 있습니다. 잘린 폭/두께일 수 있습니다.')
+    if len(values)<5:warnings.append('유효 표본이 5개 미만입니다. 구간·간격·마스크를 검토하세요.')
+    if values and len(values)>=5 and abs(float(np.mean(values)-np.median(values)))>max(1e-9,abs(float(np.median(values)))*.1):
+        warnings.append('평균과 중앙값이 10% 이상 다릅니다. 끝부분·다중 교차·실제 두께 변화를 검토하세요. 자동 이상값 삭제는 하지 않았습니다.')
+    for comp in components:
+        del comp['loops']
+        comp['accepted_count']=sum(r.get('component_id')==comp['component_id'] and r['status']=='ok' for r in rows)
     return dict(rows=rows,axis=axis,unit='nm',summary=dict(count=len(values),mean=float(np.mean(values)) if values else None,
-                median=float(np.median(values)) if values else None,std=float(np.std(values)) if values else None),
-                method='rigid-transformed mask contour intersections; disconnected intervals measured separately')
+                median=float(np.median(values)) if values else None,std=float(np.std(values)) if values else None,
+                min=float(np.min(values)) if values else None,max=float(np.max(values)) if values else None,status_counts=counts),
+                sampling=policy,components=components,warnings=warnings,
+                method='rigid-transformed mask contour intersections; geometric components and disconnected intervals measured separately; explicit sampling exclusions retained as rows')

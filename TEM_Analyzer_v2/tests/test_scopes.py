@@ -62,6 +62,23 @@ class ScopeTests(unittest.TestCase):
         p.candidate(self.id,c['id'])['active']=False
         self.post('rotation/preview',dict(image_id=self.id,config={'scope_id':'target'}),400)
 
+    def test_sampling_and_raw_exclusions_export_without_layers(self):
+        import csv
+        self.prepare()
+        self.post('rotation/preview',dict(image_id=self.id,config=dict(scope_id='target')))
+        self.post('rotation/confirm',dict(image_id=self.id))
+        self.client.post('/api/scale/manual',json=dict(image_id=self.id,a=[5,5],b=[55,5],length=100))
+        result=self.post('measurement',dict(image_id=self.id,config=dict(scope_id='target',start=0,stop=79,step=10,sampling=dict(mode='component_center',center_fraction=.5))))
+        self.assertEqual(result['summary']['count'],3);self.assertEqual(result['summary']['mean'],40)
+        r=self.client.post('/api/workflow/export',json=dict(image_ids=[self.id],scope_id='target'))
+        self.assertEqual(r.status_code,200,r.text)
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            rows=list(csv.DictReader(io.StringIO(z.read('measurements.csv').decode('utf-8-sig'))))
+            excluded=[r for r in rows if r['status']=='outside_component_window']
+            self.assertTrue(excluded)
+            self.assertTrue(all(r['length_nm']=='' and float(r['raw_length_nm'])==40 for r in excluded))
+            self.assertTrue(all(r['layer_id']=='' and r['scope_id']=='target' for r in rows))
+
     def test_missing_scope_no_fallback_and_undo_restore(self):
         c,m,_=self.prepare();p=self.api.project
         self.post('rotation/preview',dict(image_id=self.id,config={'scope_id':'missing','layer_id':1}),400)

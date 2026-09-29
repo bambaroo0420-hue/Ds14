@@ -5,12 +5,27 @@ export function mountScopes(T,selection){
   $('maskSelectionCount').closest('details').after(panel);
   T.scopeId=()=>$('analysisScope').value==='selection'?$('maskScopeId').value.trim():null;
   T.exportOptions=()=>({scope_id:T.scopeId(),include_gt:$('exportPartialGT').checked});
+  const mirrors=[];
+  for(const page of ['measure','batch']){
+    const box=document.createElement('div');box.className='scope-banner';
+    box.innerHTML=`<label>현재 분석 범위 <select id="scopeMode_${page}"><option value="layers">기존 레이어 사용</option><option value="selection">저장한 선택 마스크 집합 사용</option></select></label><p id="scopeNote_${page}"></p><button id="scopeEdit_${page}">SAM 화면에서 선택 집합 편집</button>`;
+    $(page).querySelector('h2').after(box);mirrors.push(page);
+    $(`scopeMode_${page}`).onchange=()=>{$('analysisScope').value=$(`scopeMode_${page}`).value;changed()};
+    $(`scopeEdit_${page}`).onclick=()=>document.querySelector('[data-page="sam"]').click();
+  }
+  function changed(){render();window.dispatchEvent(new Event('tem:scope-changed'))}
   function render(){
     const key=$('maskScopeId').value.trim(),s=T.state.mask_scopes?.[T.current]?.[key];
     $('maskScopeInfo').textContent=s?`${key}: mask ${s.candidate_ids.join(', ')} · ${s.review_hash?'검수 기록 있음 (GT 출력 시 최신 입력 확인)':'미검수'}`:'현재 이미지에 저장한 선택 집합이 없습니다.';
     if(s)$('maskScopePreview').src=`/api/workflow/scopes/${T.current}/${encodeURIComponent(key)}.png?v=${T.state.revision}`;else $('maskScopePreview').removeAttribute('src');
+    for(const page of mirrors){
+      $(`scopeMode_${page}`).value=$('analysisScope').value;
+      const total=Object.keys(T.state.images).length,ready=Object.keys(T.state.images).filter(i=>T.state.mask_scopes?.[i]?.[key]).length;
+      $(`scopeNote_${page}`).textContent=T.scopeId()?`선택 집합 ID: ${key} · 현재 이미지 ${s?'mask '+s.candidate_ids.join(', '):'집합 없음: 실행 시 실패'} · 프로젝트 ${ready}/${total}장에 저장됨. 미선택은 unknown이며 전체 물질 GT가 아닙니다.`:'레이어 기준입니다. 특정 마스크만 쓰려면 저장한 선택 집합으로 전환하세요.';
+    }
   }
-  $('maskScopeId').onchange=render;
+  $('maskScopeId').onchange=changed;
+  $('analysisScope').addEventListener('change',changed);
   $('saveMaskScope').onclick=()=>T.task(async()=>{await T.api('workflow/scopes/save',{image_id:T.current,scope_id:$('maskScopeId').value.trim(),candidate_ids:selection.ids()});$('analysisScope').value='selection';await T.refresh();T.say('선택 집합 저장됨. 회전·계측에 사용할 수 있습니다. 부분 GT는 미리보기를 검수한 후 확정하세요.')});
   $('confirmMaskScope').onclick=()=>T.task(async()=>{if(!await T.confirm('선택 집합 미리보기가 의도한 target인지 확인했나요? 선택 밖은 unknown이며 전체 물질 GT가 아닙니다.'))return;await T.api('workflow/scopes/confirm',{image_id:T.current,scope_id:$('maskScopeId').value.trim()});await T.refresh()});
   window.addEventListener('tem:refreshed',render);return {render};

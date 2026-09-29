@@ -69,3 +69,43 @@
 - Python 전체 75개 + Node 회귀 다시 통과, 이후 방향 추정 알려진 45° 회귀 추가 assertion도 통과.
 
 문서/PR 게시 및 main 앱 코드 동기화가 남았다. 그 후 thin-layer 자동점/큰각도 반례/중앙 계측 구간/QC를 추가 실험한다. 실제 5시간 작업의 최종 보고서는 시간 종료 후 갱신한다.
+
+### 03:30 KST — 1차 v2.2 게시 완료, 후속 반복 대기
+
+- 위 03:20의 게시 대기 상태는 해소됨. GitHub `codex/tem-v2-batch-metrology`에 `3fd554e909574cb3eb3ec2ad2dbb9fa25f7a7db8` 게시, 기존 PR #1 갱신. main은 병합하지 않음. 로컬 Git 작업 트리 깨끗함.
+- Desktop 최종 검증: Python 75개 (10.582 s), Node UI 회귀, pip check 통과. SOURCE_SHA256 121개 소스 일치.
+- 사용자 앱 8876: 본인이 시작한 이전 서버를 작업 없음 확인 후 재시작. 최신 Desktop 코드, PID 28768 / exec session 24253, 프로젝트 `test-output/crop19-v22/project` 보존. 모델은 재시작 후 다시 로드해야 하며 재설치/재다운로드 불필요. 사용자 브라우저 탭은 임의 새로고침하지 않았음.
+- 독립 UI 8881: staging `test-output/ui-v220`, PID 13348 / session 3035. 두 이미지 모두 레이어 미배정이며 선택 scope로 GT·회전·계측 완료.
+- 첨부 UI 8882: staging `test-output/attached-ui-v220`, PID 36364 / session 56586. 44.1441° 영상 보조 방향은 미확정 제안. 실제 SAM W 경계가 잘못되어 이 상태의 계측 정확도를 주장하면 안 됨.
+- 증거: workspace `evidence-v220/selected-mask-batch.png`, `evidence-v220/attached-direction-44deg.png`. 보고서 `docs/V220_REVIEW_KO.md`는 GitHub에도 게시됨.
+- 자동 후속 예약 `tem-v2-5` 활성. 07:39:53 KST까지 이어서 진행하되, 5시간이 지난 것처럼 보고하지 않는다. 종료 후 예약 비활성화 필수.
+
+#### 다음 실행 우선 작업
+
+1. `services/measurement.py`의 계측 위치/구간과 endpoint bias를 확인: 실제 19 +7°에서 median 165.35 nm vs mean 137.30 nm인 현상 재현. 자동으로 짧은 측정을 숨기지 말고 선택 가능한 중앙 구간·유효 구간/QC 및 제외 사유를 설계/테스트.
+2. 영상 보조 방향의 큰각도·음성 대조군을 추가 실행. 첨부에서만 성공한 방법을 일반 자동 회전으로 승격하지 않음.
+3. 얇은 층에 EDT 큰 영역 점이 편중되는 문제를 분석하고 프로파일/능선 기반 점 배치 등 다른 후보를 비교. Grid/feature/combined 구분 유지; point 수·mask 수 증가를 정확도 향상으로 주장하지 않음.
+4. 부분 선택 scope 상태를 회전/일괄 UI에서도 명시. preset 일괄 적용은 현재 미구현이며 구현 시 이미지별 변환 실패를 명시적으로 중단.
+5. 새 변경은 staging에서 apply_patch → `_tem_v2_sync.ps1` 승인 실행 → Desktop `tools/update_source_manifest.py` → 회귀 및 실제 구동 → 소스만 PR 갱신. 대량 JSON 대신 파일별로 내용을 읽고 remote tree SHA와 로컬 git write-tree를 비교하여 게시.
+
+현재 로그의 이 항목은 다음 반복을 위한 staging 기록이며, 아직 별도 후속 커밋으로 게시하지 않음.
+
+### 03:50 KST 전후 — 2차 v2.2.1 계측 표본 개선 완료, 게시 준비
+
+- 원인 재현: 실제 1-cell +7° SAM mask의 전체 평균 137.304, 중앙값 165.351 nm, 약 0.595 nm 분절 포함. 마스크/축척을 바꾸지 않고 표본 정의 민감도를 비교.
+- 전체(기본 유지)/연결 객체별 중앙 80·60%, 다중 교차·프레임 끝점·명시적 최소 길이 옵션. 제외 행/원시 nm/사유/좌표 보존, 원시 행 수 동일 검증. 자동 이상치 삭제 없음.
+- 실제 SAM mask 5장×표본 정책5개=25/25 일괄 계측, ZIP5개 및 unknown 부분GT 확인. `test-output/sampling-v221/results.json`.
+- 중앙60%+다중 교차 제외: 1-cell 0/+7° 평균 165.486/165.855 nm, 3-cell 0/+7/−8° 162.963/163.226/163.691 nm. 이는 표본 민감도/재현성이지 물리 정확도 증명 아님. 중앙60%만으로 3-cell0° 구멍 문제는 해결되지 않았음.
+- 1px contour 누락 수정. 계측 알고리즘 버전 hash 변경: 기존 측정은 만료→재측정 안내. 기준 회전·축척은 유지.
+- 방향 대조27개: 알려진22각도/잡음합성 최대오차0.03154°, 균일/잡음/동심원3개거절, 체크무늬/물결2개낮은신뢰. 실제TEM 일반화 미검증. `test-output/orientation-controls-v221`.
+- Python83 tests PASS 11.245s, Node UI 회귀 PASS. API 부분 scope CSV 원시길이/빈 최종길이 검증 포함.
+- 최신 독립 GUI8883에서 이전 계측 만료 표시 확인 후 선택scope + 중앙60 + 다중/프레임제외를 실제 클릭, 5장 GT+계측10/10, JS오류없음. 레이어는 모두 미배정, 3cell가운데 미선택 유지.
+- 테스트 서버8883 PID29100 / exec session70063, cwd staging, 프로젝트 `test-output/sampling-v221/project`. CUA samplingTab id7, browser1, handoff 표시. 스크린샷 workspace `evidence-v221/selected-sampling-batch.png`, `tilted-three-cell-sampling.png`.
+- 보고서 `docs/V221_REVIEW_KO.md`, 사용법/데이터계약/모듈문서 갱신. 아직 게시 전인 기록이며 다음 항목에 실제 commit을 남김.
+
+#### 다음 반복 우선순위 (위 완료 실험 반복 금지)
+
+1. 얇은 층 프롬프트: `feature_prompts.py`의 큰 EDT 영역 편중을 분석, 프로파일/능선/방향 기반 점 후보를 실제 공개 층상 영상에서 비교. GitHub/논문/공식 자료로 근거 확인. candidate 수를 정확도로 오해하지 말기.
+2. 실제 TEM 영상의 영상방향 보조 추정: 첨부45° 및 다른공개 영상을 알려진 각도로 회전해 equivariance/실패를 검사. 합성 stripes 성공만으로 일반화 주장 금지.
+3. UI 현재 canvas는 한 후보 mask(예:6)를 보여도 분석scope는 [6,8]일 수 있음. SAM 선택집합 미리보기는 있지만 회전/일괄에서도 전체 선택집합 표시 또는 명확한 legend를 제공하면 좋음.
+4. preset 일괄 재사용은 여전히 미구현. 시간 범위 내 검증 가능한 경우 별도 실패 처리·미리보기 계획. 07:39:53 KST 이후 새 실험 시작하지 말기.

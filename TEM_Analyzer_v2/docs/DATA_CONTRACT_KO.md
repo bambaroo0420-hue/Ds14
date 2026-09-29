@@ -30,7 +30,7 @@ Gradient+DP 적용·레이어 대응으로 생성/변경된 마스크는 검수 
 겹침이 있는 후보는 검수 확정할 수 없습니다. 알려진 무효 영역은 불확실/제외 주석으로 명시할 수 있습니다.
 GT ZIP은 검수된 유효 영역을 출력하며, 미지정 부분이 있어도 부분 GT로 사용할 수 있습니다.
 
-회전은 레이어에 배정된 활성 SAM 마스크만으로 가능합니다. GT·경계 보정·마스크 검수 확정은 필수가 아닙니다.
+회전은 레이어에 배정된 활성 SAM 마스크 또는 저장한 선택 집합(scope)으로 가능합니다. GT·경계 보정·마스크 검수 확정은 필수가 아닙니다.
 계측은 회전·축척을 확인한 뒤 실행합니다. 미검수 마스크를 쓰면 `review_status=provisional_unreviewed_masks`이며 최종 정확도를 보증하지 않습니다.
 충돌·제외·불확실 영역을 통과하는 측정은 무효로 남깁니다.
 
@@ -40,6 +40,22 @@ GT ZIP은 검수된 유효 영역을 출력하며, 미지정 부분이 있어도
 `workflow/export`의 `include_gt=true`를 명시한 경우에만 검수 조건을 검사하고 이미지별 GT ZIP을 추가합니다. 기존 경계·GT 화면의 GT 내보내기도 별도입니다.
 JSON에는 변환·축척·측정 위치·원본 역변환 끝점·입력 해시가 포함됩니다.
 CSV 무효 측정은 빈 길이와 실패 상태로 기록하고 0 nm로 위장하지 않습니다.
+
+v2.2 선택 집합은 `scope_id`와 이미지별 `candidate_ids`로 지정합니다. 레이어 미배정 후보도 가능합니다.
+부분 GT의 1은 선택 집합의 binary target 합집합이며 물질 ID가 아닙니다. 미선택 영역은 65535이며 자동 배경으로 바꾸지 않습니다.
+
+v2.2.1 `measurement.config.sampling`은 `mode=all|component_center`, `center_fraction`(0 초과~1),
+`single_interval_only`(bool), `reject_frame_endpoints`(bool), `min_length_px`(0 이상)를 받습니다.
+기본값은 전체/다중 교차 허용/프레임 허용/최소 0입니다. 중앙 비율은 원본 마스크 4-connectivity 연결 객체의
+회전 후 contour x 범위(두께) 또는 y 범위(CD)에 적용됩니다. 입력 start/stop/step 위치는 유지되며 벗어난 행도 출력합니다.
+`component_id`는 계산상 연결 객체이지 SAM 후보 ID나 물질 ID가 아닙니다. 512개 초과는 명시적 오류입니다.
+같은 객체의 구멍/분기는 `multiple_intervals`이며 다른 객체를 같은 선으로 측정하는 것은 이 플래그가 아닙니다.
+프레임 판정은 역변환 끝점이 원본 가장자리 pixel centre 바깥 또는 그 위인 경우입니다.
+제외 행의 `length_nm=null`, `raw_length_nm`은 무효/제외된 교차 길이이며 최종 계측으로 쓰면 안 됩니다.
+`exclusion_reasons`는 적용한 모든 제외 사유, `status`는 첫 사유, `quality_flags`는 비제외 경고도 포함합니다.
+평균·중앙값·표준편차는 status=ok 행만 사용합니다. 어떤 수치 이상값도 자동으로 삭제하지 않습니다.
+샘플링 범위를 좁혀 평균이 안정돼도 물리 정확도 입증은 아닙니다. 좁은 층·구멍·의도적 분기를 놓칠 수 있습니다.
+알고리즘 버전도 계측 해시에 포함하므로 이전 버전 결과는 재계측해야 합니다.
 
 `preprocessing[image_id].template`은 기존 위치 템플릿, `auto_regions`는 OCR 확정 제외 박스입니다.
 프로젝트의 `legacy_templates_enabled` 기본값은 false입니다. 꺼진 템플릿은 표시·SAM 입력·레이블에서 모두 무시됩니다. OCR 박스는 이 스위치와 무관하게 적용됩니다.
