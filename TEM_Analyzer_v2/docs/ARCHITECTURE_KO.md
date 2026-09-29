@@ -20,6 +20,7 @@
 | `services/measurement.py` | 검수 조건·입력 해시·계측 버전 | 결과 만료 조건 |
 | `services/scopes.py` | 레이어 없는 선택 mask target·부분 GT | 검수 hash·unknown 계약 |
 | `services/prompt_transfer.py` | 재사용 preset·정규화/ECC 좌표 변환 | 정합 QC·pixel-centre 기준 |
+| `services/prompt_batches.py`, `routes/prompt_batches.py` | 영상별 재사용 draft·입력 hash·검수·실행/PNG | 준비와 SAM 분리, 오래된 draft 차단 |
 | `algorithms/orientation.py` | Hough/구조 텐서 보조 방향 | 프레임·문자 제외·방향 합의 |
 | `algorithms/profile_prompts.py` | 얇은 층의 횡단 프로파일 점 제안 | 방향·에지 쌍·평활·폭 제한 |
 | `routes/workflow.py` | `/api/workflow/*` 기능 연결·출력 | 새 HTTP 기능 |
@@ -28,6 +29,7 @@
 | `web/modules/selection.js` | Ctrl/Shift·다중 삭제·드래그 | 목록 편의성 |
 | `web/modules/metrology.js` | 회전·계측 화면 | 측정 옵션 |
 | `web/modules/batch.js` | 진행률·취소·실패 재시도 | 일괄 처리 UI |
+| `web/modules/prompt_batch.js` | preset 일괄 준비·이미지별 미리보기·검토 표 | 이미지 로드 gate, 검수 행 선택 |
 | `web/modules/workflow.js` | 자동 제외·레이어 경계 화면 조립 | 페이지 기능 연결 |
 | `web/modules/scopes.js`, `prompt_transfer.js` | 선택 범위·프롬프트 재사용 UI | 저장·미리보기·별도 실행 |
 | `tests/`, `tools/` | 수치/API 테스트·실제 모델 검증 | 회귀 재현 |
@@ -61,3 +63,8 @@ v2.2.2 프로파일 설정은 `feature_prompts.FeatureConfig` → `propose` → 
 `tools/compare_profile_prompts.py`는 생성 GT와 공개 무GT 데이터를 명시적으로 구분합니다.
 `tools/validate_real_orientation.py`는 원본을 읽기만 하며, 알려진 추가 회전의 일관성을 검증합니다. 기준 방향 정확도 시험으로 해석하지 마세요.
 방향 보조 모드는 기존 합의가 충분할 때 유지하고, 실패/불일치 시 L2 Canny의 제한된 설정을 탐색합니다. 보조 후보는 텐서와 2° 미만 일치해야 높은 신뢰도 제안이며, 그 외는 미확정 경고입니다. 높은 신뢰도도 물질 경계 인증은 아닙니다.
+
+v2.2.3 재사용은 `JobManager(prompt_transfer)` → `prepare_transfer`만 실행하고, 검수 후 별도 `sam`의 `prompt_source=transferred`가 `run_transferred`를 호출합니다.
+새 준비 시작 시 기존 review를 먼저 만료시켜 부분 실패/취소에 옛 좌표가 살아나지 않게 합니다.
+`current_transfer` 검증을 우회하거나 실패 때 Grid로 대체하지 마세요. `tem:idle`에서 미리보기 로드 gate를 재적용합니다.
+`transfer_matrix`의 양쪽 제외 ECC는 optional OpenCV API입니다. 기존 ECC 경로를 유지하며 새 패키지 기능 미지원은 명시적 오류로 처리합니다.

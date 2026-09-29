@@ -16,6 +16,7 @@ from ..services.layers import active, unions, fingerprint, inspect_conflicts, pr
 from ..services.measurement import alignment, alignment_current, run_measurement, measurement_hash
 from ..services.scopes import save_scope, confirm_scope, require_scope_review, scope_arrays
 from ..services.prompt_transfer import save_preset, preview_preset
+from ..services.prompt_batches import prepare_transfer,run_transferred
 from ..labels import compose, EXCLUDED
 from ..preprocessing import model_input, restrict_mask, exclusion_mask
 from ..jobs.manager import JobManager
@@ -61,6 +62,10 @@ def install(app,project,model,model_lock,gate):
         return dict(valid_pixels=int(valid.sum()),unknown_pixels=int((labels==65535).sum()),input_hash=fingerprint(project,iid))
 
     def execute(iid,stage,settings):
+        if stage=='prompt_transfer':
+            cfg=settings.get('prompt_transfer',{});value=prepare_transfer(project,iid,cfg.get('preset_id',''),cfg.get('method','normalized'))
+            return dict(status='needs_prompt_review',preset_id=value['preset_id'],ecc_score=value['ecc_score'],inference_run=False,
+                        prompt_count=len(value['draft']['auto_points'])+len(value['draft']['manual_points']),warnings=value['warnings'])
         if stage=='annotations':
             proposal=detect(iid,settings)
             if settings.get('apply_annotations'):apply_annotations(iid,proposal)
@@ -74,6 +79,7 @@ def install(app,project,model,model_lock,gate):
                 values=[float(cfg.get('pred_iou',.9)),float(cfg.get('stability',.92)),float(cfg.get('nms',.8))]
                 if not all(np.isfinite(v) and 0<=v<=1 for v in values):raise ValueError('SAM 필터 값은 0~1입니다.')
                 source=cfg.get('prompt_source','grid');prepared=None;proposal=None
+                if source=='transferred':return run_transferred(project,model,iid,values)
                 if source not in ('grid','features','grid_features'):raise ValueError('일괄 프롬프트 방식 오류')
                 if source!='grid':
                     from ..prompts import grid_points
@@ -352,4 +358,6 @@ def install(app,project,model,model_lock,gate):
             async with gate:return manager.start(ids,remaining,old['settings'])
         except (ValueError,KeyError,StopIteration) as e:raise HTTPException(400,str(e))
 
+    from .prompt_batches import install as install_prompt_batches
+    install_prompt_batches(app,project)
     return manager

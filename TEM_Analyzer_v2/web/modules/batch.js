@@ -25,6 +25,7 @@ export function mountBatch(T,metrology) {
     const steps=[...document.querySelectorAll('[data-job-step]:checked')].map(x=>x.dataset.jobStep);
     await T.api('workflow/jobs/start',{image_ids:ids(),steps,settings:settings()});$('jobInfo').dataset.running='true';setTimeout(poll,0);
   });
+  window.addEventListener('tem:job-started',()=>{$('jobInfo').dataset.running='true';poll()});
   $('cancelJob').onclick=async()=>{try{await T.api('workflow/jobs/cancel',{});await poll()}catch(e){T.say(e.message)}};
   $('retryJob').onclick=()=>T.task(async()=>{await T.api('workflow/jobs/retry',{job_id:lastId});$('jobInfo').dataset.running='true';setTimeout(poll,0)});
   for(const [id,kind] of [['confirmSelectedScales','scale'],['confirmSelectedRotations','rotation']]){

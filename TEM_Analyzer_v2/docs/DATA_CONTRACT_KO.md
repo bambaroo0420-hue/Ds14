@@ -59,3 +59,12 @@ v2.2.1 `measurement.config.sampling`은 `mode=all|component_center`, `center_fra
 
 `preprocessing[image_id].template`은 기존 위치 템플릿, `auto_regions`는 OCR 확정 제외 박스입니다.
 프로젝트의 `legacy_templates_enabled` 기본값은 false입니다. 꺼진 템플릿은 표시·SAM 입력·레이블에서 모두 무시됩니다. OCR 박스는 이 스위치와 무관하게 적용됩니다.
+
+v2.2.3 `prompt_transfers[image_id]`는 preset ID, source/target image, 원본 pixel-centre 변환 matrix,
+변환된 draft, 방식·상관점수·경고, `input_hash`, `draft_hash`, `review_hash`를 보존합니다.
+입력 hash는 preset 전체, 기준·대상 영상 bytes/크기, 양쪽 제외 마스크, 대상 SAM 필터에 연결됩니다.
+`superseded_by`가 있거나 hash가 다르면 확정/실행 불가입니다. SAM 후보가 추가된 것만으로 좌표 검토를 만료시키지는 않습니다.
+실행 이력과 신규 후보 prompts에는 변환·preset·검수 hash를 기록합니다. 원본·마스크를 재정합 warp하는 기능이 아닙니다.
+자동점은 제외/영상 밖이면 경고와 함께 제거, 수동점과 box가 유효 범위를 벗어나면 전체 준비를 거절합니다.
+회전된 box는 축 정렬 외접 box이며 다른 물질까지 포함할 수 있으므로 검토해야 합니다.
+GT 확정과 프롬프트 확정은 독립적입니다. 프로그램 검증 도구의 자동 확인은 전문가의 물질 판정이 아닙니다.

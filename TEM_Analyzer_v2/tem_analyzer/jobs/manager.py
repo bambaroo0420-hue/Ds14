@@ -18,13 +18,20 @@ class JobManager:
         ids=list(dict.fromkeys(ids))
         if not ids or not steps:raise ValueError('이미지와 처리 단계를 선택하세요.')
         for iid in ids:self.project.require_image(iid)
-        allowed={'annotations','sam','match','boundary','rotation','measurement','gt'}
+        allowed={'annotations','prompt_transfer','sam','match','boundary','rotation','measurement','gt'}
         if any(s not in allowed for s in steps):raise ValueError('지원하지 않는 일괄 단계')
         steps=list(dict.fromkeys(steps))
-        order=['annotations','sam','match','boundary','gt','rotation','measurement']
+        if 'prompt_transfer' in steps and len(steps)!=1:raise ValueError('프롬프트 재사용 준비는 단독 실행하세요. 미리보기 검수 후 SAM을 별도로 실행합니다.')
+        if 'prompt_transfer' in steps and len(ids)>200:raise ValueError('재사용 프롬프트는 한 번에 최대 200장씩 준비하세요.')
+        order=['annotations','prompt_transfer','sam','match','boundary','gt','rotation','measurement']
         steps=sorted(steps,key=order.index)
         self.current=dict(id=uuid.uuid4().hex,status='queued',image_ids=ids,steps=steps,settings=copy.deepcopy(settings),
                           rows=[],done=0,total=len(ids)*len(steps),started=time.time(),cancel_requested=False)
+        if 'prompt_transfer' in steps:
+            self.project.checkpoint('batch:prompt-transfer-start')
+            for iid in ids:
+                old=self.project.state.get('prompt_transfers',{}).get(iid)
+                if old:old.update(superseded_by=self.current['id'],review_hash=None)
         self.project.state['jobs']=self.project.state['jobs'][-19:]+[self.current]
         self.project.busy_job=True;self.project.save()
         self.task=asyncio.create_task(self.run())

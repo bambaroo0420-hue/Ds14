@@ -1,11 +1,13 @@
-import {mountSelection} from './selection.js?v=2.2.2';
-import {mountMetrology} from './metrology.js?v=2.2.2';
-import {mountBatch} from './batch.js?v=2.2.2';
-import {mountScopes} from './scopes.js?v=2.2.2';
-import {mountPromptTransfer} from './prompt_transfer.js?v=2.2.2';
+import {mountSelection} from './selection.js?v=2.2.3';
+import {mountMetrology} from './metrology.js?v=2.2.3';
+import {mountBatch} from './batch.js?v=2.2.3';
+import {mountScopes} from './scopes.js?v=2.2.3';
+import {mountPromptTransfer} from './prompt_transfer.js?v=2.2.3';
+import {mountPromptBatch} from './prompt_batch.js?v=2.2.3';
 const T=window.TEM,$=id=>document.getElementById(id);let boundaryToken=null,boundaryImage=null;
 const selections=mountSelection(T),scopes=mountScopes(T,selections),metrology=mountMetrology(T),batch=mountBatch(T,metrology);
 const promptTransfer=mountPromptTransfer(T);
+const promptBatch=mountPromptBatch(T);
 const ocrMode=document.createElement('label');ocrMode.className='inline-check';ocrMode.innerHTML='<input id="enhancedOCR" type="checkbox" checked>확대 재검출 OCR (약한 문자 보완, 더 느림)';$('detectAnnotations').before(ocrMode);
 function render(){
   $('samImageSelect').innerHTML=Object.entries(T.state.images||{}).map(([id,x])=>`<option value="${id}">${T.escape(x.name)}</option>`).join('');$('samImageSelect').value=T.current||'';

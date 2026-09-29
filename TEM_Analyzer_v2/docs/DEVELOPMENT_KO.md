@@ -61,6 +61,12 @@ GT/경계 보정 없이 회전각의 상대 오차(1° 이내)를 검사하고 `
 OCR 적용, 회전 제안/확정, 두께/CD, ZIP, 새로고침, 일괄 취소/부분 실패/재시도를 확인합니다.
 기존 `tests/ui_regression.cjs`는 모사 DOM 테스트입니다. 실제 브라우저 확인과 구분하세요.
 
+v2.2.3 프롬프트 검수 gate 모사 테스트는 `node tests/ui_prompt_batch.cjs`입니다. 별도 Node 패키지는 필요 없습니다.
+`tools/validate_prompt_reuse.py --project <기존 검증 프로젝트> --checkpoint <pth> --output <새 폴더> --methods normalized ecc ecc_masked`는
+실제 모델을 실행합니다. 출력 폴더를 덮어쓰지 않으며, 기존 SAM와의 oracle IoU는 전문가 GT 정확도가 아닙니다.
+`tools/validate_transfer_geometry.py --project <19 crop 프로젝트> --output <새 JSON>`은 알려진 생성 변환의 좌표를 비교합니다.
+실제 GUI에서는 미검수 실행 차단 → 미리보기 → 확인 → SAM만 → 기존 후보 보존/레이어 미배정까지 확인하세요.
+
 ## 수정 시 주의
 
 - 검수/좌표 규칙 변경 시 `test_metrology.py`, `test_workflow_v21.py`를 함께 확인합니다.

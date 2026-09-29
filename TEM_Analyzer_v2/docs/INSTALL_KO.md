@@ -80,6 +80,20 @@ CPU 기본 wheel 다운로드가 GPU 의존성을 포함할 수 있으므로 준
 
 ## 흔한 오류
 
+v2.2.3 검증 PC는 `opencv-python-headless 5.0.0.93` (`cv2.__version__=5.0.0`)이 이미 설치돼 있었습니다.
+기존 requirements의 `<5` 상한과 실제 환경이 달라 `<6`으로 조정했습니다. 이 작업 중 OpenCV를 재설치하지 않았습니다.
+기존 기능은 `>=4.8` 범위를 유지하지만 이 반복에서 4.x 전체 조합을 다시 검증한 것은 아닙니다.
+새 **양쪽 제외 ECC**는 `findTransformECCWithMask` 존재를 검사하며 미지원이면 오류 안내 후 중단합니다.
+기존 normalized/ECC로 조용히 바꾸지 않습니다. 회사 환경에서 아래로 확인하세요.
+
+```powershell
+.\.venv\Scripts\python.exe -c "import cv2; print(cv2.__version__, hasattr(cv2, 'findTransformECCWithMask'))"
+```
+
+일반 ECC와 Grid/SAM 사용 때문에 새 정합 API를 반드시 설치할 필요는 없습니다.
+해당 실험 모드가 필요하면 별도 검증 가상환경에서 같은 플랫폼의 5.0.0.93 wheel로 테스트 후 freeze/wheelhouse에 포함하세요.
+OpenCV 패키지 여러 종류를 동시에 설치하지 마세요. `pip check` 통과만으로 프로젝트의 requirements 버전 일치를 보장하지는 않습니다.
+
 - `ModuleNotFoundError`: 설치와 실행을 모두 `.venv\Scripts\python.exe`로 수행했는지 확인.
 - 모델 파일 없음: 상대 경로는 `TEM_Analyzer_v2` 기준. 시작 BAT는 해당 폴더로 이동합니다.
 - torchvision 연산 오류: torch/torchvision 호환 조합을 다시 설치.

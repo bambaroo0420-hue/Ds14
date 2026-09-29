@@ -139,3 +139,31 @@
 2. 얇은층 SAM crop/ROI 또는 대비극성·박스프롬프트 비교. 새 모델 다운로드 전 기존체크포인트로검증가능한범위. `profile`후보수/IoUoracle를semantic정확도로오해하지않기.
 3. 첨부45변형 보조회전은여전히미해결. tensor단독각이나프로파일방향을추가해도물질경계검증대체아님. 기준라인 GT없이 "완전해결"이라고하지않기.
 4. 07:39:53KST에새실험중지,원본보존·진행작업마무리·최종MD·heartbeat비활성화. 현재시각은아직4시대로5시간완료아님.
+
+### 04:22 KST — v2.2.2 게시 완료
+
+- GitHub branch/PR #1: commit `3d8be3d1ee5cd43d39a6adea9683c3443d7e4b28`, tree `77aca94b74b19f5646662e325dc199d94d22d963`, parent `6fd06724cdba169256853a68cb7b6da973a8d6d8`. 소스19개를 파일별로 읽어 원격 tree SHA와 로컬 staged tree 일치 확인 후 게시. main 미병합, 로컬 Git 깨끗함.
+- Desktop 최종 Python90 tests PASS13.046s, Node UI PASS, pip check PASS, 소스manifest131개. 실제 GUI2장 일괄은 신규6/18후보, 모든 후보의 layer_id=None 확인.
+- 사용자 앱8876: 활성 작업 없음/모델 미로드 상태를 확인하고 본인 실행 PID34972만 재시작. 새 PID38644 / exec session12236, Desktop cwd, 기존 `test-output/crop19-v22/project` 보존. 사용자 탭 임의 새로고침하지 않음.
+- 독립 GUI8884: PID25172 / session58264, staging `test-output/profile-ui-v222`, 실제 모델 로드 상태. CUA tab8(profileTab) handoff, tab7(samplingTab) handoff. 8883 Python은 아직 v2.2.1 메모리이므로 새 profile/방향 검증에는 사용하지 말 것.
+- 새 실험 기준 자료는 `docs/V222_REVIEW_KO.md`. 위 다음 반복 후보를 따라 진행하고 종료 시각을 준수한다. 이 게시 메타데이터는 staging 기록이며 다음 게시 때 포함한다.
+
+### 04:54 KST 전후 — 4차 v2.2.3 검증 완료, 게시 준비
+
+- preset 일괄 준비 → 이미지별 점/box 미리보기 → 검토 확정 → 별도 SAM 실행 구현. 자동/수동 object/독립 양성점 경로 구분, 후보 append-only/미배정. 준비와 SAM 동시 job 거절.
+- 새 준비 실패/취소 시 예전 검토 draft 사용 차단. preset·source/target 영상/제외·대상 SAM필터 hash 검증. 이미지 삭제/복원에 draft 포함. 미리보기 로드 gate와 검수 선택 해제 유지.
+- 실제 기존 normalized/ECC 비교11대상: SAM8완료/3차단. normalized 3cell+7 오른쪽 점이 배경으로 이동, 기존SAM와 최고IoU0.0990. 기존ECC3cell+7/−8은0.731/0.708로거절. 1cell+7은ECC0.8758로성공. 실패시Grid대체없음.
+- OpenCV공식 양쪽 mask ECC 조사. 중앙50%+source/target제외로정합: 시제품실제SAM5완료/flat1거절. 3cell+7 양끝oracleIoU .9523/.9923, −8 .9727/.9944. 회사/전문가GT정확도아님.
+- 미세질감합성9px이동에서단일해상도실패→128급coarse/512급fine추가. 4알려진각도+이동검증통과. 최종19생성변환5장 최대control위치차0.096926px; flat/무관잡음거절. 반복셀의고상관오대응·배율·큰변형미해결.
+- 실제GUI8885:2장Ctrl선택·양쪽제외ECC준비2/2·각영상점확인·검수·SAM2/2신규각2후보. 기존후보보존/모두미배정. 추가0°미검수SAM차단→미리보기확정→실패재시도1/1성공. 이번반복실제SAM총16회(비교8+시제품5+최종GUI3).
+- 108 Python tests PASS15.765s(상속공통테스트중복포함), Node기존+신규prompt_batch회귀PASS, pip check PASS. 새GUI로드gate수정후새로고침·재검수작동확인,JS오류없음.
+- 실제환경OpenCV5.0.0.93이기존requirements<5와불일치발견. <6으로수정하되4.x전체검증미수행명시. 양쪽maskAPI기능검사/미지원명시적오류. 패키지재설치안함.
+- 증거 workspace evidence-v223 및 test-output/prompt-reuse-v223, prompt-reuse-masked-v223/final-geometry.json, prompt-reuse-ui-v223. GUI서버8885 PID17112/session1681, 최신정합Python이나storage삭제후속패치는메모리구버전(단위테스트별도검증). 모델로드상태. CUA reuseTab id9.
+- 상세 docs/V223_REVIEW_KO.md, 모듈/설치/데이터계약갱신. Desktop동기화·최종검증·PR게시진행예정. 아직5시간종료아님, 예약유지.
+
+#### 다음 반복 후보
+
+1. ROI/crop SAM을 첨부 얇은층/공개층상영상에 적용해 전체영상 점기반과 비교. 기존부모mask가필요한ROI편집경로와 독립box/prompt 경로의 사용자의도차이검토. 새모델다운로드없이검증가능범위부터.
+2. 첨부45도 방향의 색선·화살표 영향, material 경계검증없는 높은신뢰도 자동확정 금지. v222실패반례를그대로기준으로사용.
+3. preset잘못된점의영상별수정편의·다중preset은아직제한. 검수생략자동화보다실패격리/명시적경고우선.
+4. 07:39:53 KST 이후새실험금지,진행작업안전마무리·최종MD·heartbeat비활성화. 다음에는이반복의16회실험을그대로반복하지말것.
