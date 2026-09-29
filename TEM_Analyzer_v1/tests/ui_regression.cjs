@@ -55,5 +55,17 @@ const run=s=>vm.runInContext(s,context);
  elements.showMasks.checked=false;elements.showPrompts.checked=false;elements.batchView.value='processed';await elements.batchView.onchange();run('scaleBar=null;fit=1;zoom=1;panX=0;panY=0;redraw()');assert.equal(screen.getContext('2d').getImageData(1,1,1,1).data[0],0);
  elements.batchView.value='original';await elements.batchView.onchange();assert.equal(screen.getContext('2d').getImageData(1,1,1,1).data[0],68);
  await elements.batchConfirm.onclick();assert(elements.batchSummary.textContent.includes('검수 완료 1'));assert(elements.batchConfirm.disabled);
+
+ // Regression: unsaved scale ROI + multiple text ROIs survive image navigation
+ // and SAM prompt clearing, then all appear in the actual batch request.
+ run('scaleDraft=[1,4,10,7];captureTemplateDraft();textDraft=[[0,0,3,2]];captureTemplateDraft();textDraft=[[10,0,15,2]];captureTemplateDraft()');
+ const before=JSON.stringify(run('currentTemplateDraft()'));
+ await elements.nextImage.onclick();assert.equal(JSON.stringify(run('currentTemplateDraft()')),before);elements.clearMarks.onclick();assert.equal(JSON.stringify(run('currentTemplateDraft()')),before);
+ assert(elements.regionSummary.textContent.includes('스케일 1개 + 글씨 제외 2개'));
+ elements.scaleLength.value='50';await elements.batchApply.onclick();assert.equal(batchBody.template.text_rois.length,2);assert.deepEqual(batchBody.template.scale_roi,[1/16,4/8,10/16,7/8]);
+ assert(elements.batchResults.innerHTML.includes('<tr'));assert.equal(elements.batchResults.innerHTML,elements.batchLargeRows.innerHTML);
+ // Clear button removes project image state and the displayed base canvas.
+ const fetchBeforeDelete=context.fetch;context.fetch=async(url,opts)=>{if(url==='/api/images'&&opts.method==='DELETE'){state.images={};state.candidates={};state.scale={};state.preprocessing={};return {ok:true,headers:{get:()=> 'application/json'},json:async()=>({deleted:2})}}return fetchBeforeDelete(url,opts)};
+ await elements.clearLoadedImages.onclick();assert.equal(run('current'),null);assert.equal(run('base.naturalWidth'),0);assert.equal(run('Object.keys(imageDrafts).length'),0);
  assert((html.match(/<details/g)||[]).length>=5);console.log('PASS: binary transparency, candidate switch, stale-response guard, layer union, grid/ML prepare without SAM, collapsible sections, sorting, visibility, scale preview, independent ROI coordinates');
 })().catch(e=>{console.error(e);process.exitCode=1});

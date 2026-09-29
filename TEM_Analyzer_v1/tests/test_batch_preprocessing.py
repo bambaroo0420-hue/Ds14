@@ -77,3 +77,25 @@ class BatchPreprocessingTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/preprocessing/apply',json=body).status_code,200)
         self.assertNotIn(self.id,self.api.project.state['scale'])
         self.assertEqual(self.client.post('/api/preprocessing/confirm',json={'image_id':self.id}).status_code,200)
+
+    def test_all_region_types_and_clear_images(self):
+        a=self.add_bar(40)
+        body=self.payload()
+        body['template']['text_rois']=[[0,0,.2,.2],[.6,0,1,.2],[.7,.3,.9,.45]]
+        self.assertEqual(self.client.post('/api/preprocessing/apply',json=body).status_code,200)
+        for image_id in [self.id,a]:
+            im=model_input(self.api.project,image_id)
+            for y,x in [(5,5),(5,65),(20,60),(40,30)]:self.assertFalse(im[y,x].any())
+            self.assertTrue(im[20,25].any())
+            self.assertEqual(len(self.api.project.state['preprocessing'][image_id]['template']['text_rois']),3)
+        self.api.project.state['prepared_prompts']={a:{'points':[[10,10]]}}
+        templates=self.api.project.state['templates'].copy()
+        r=self.client.delete('/api/images')
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(r.json()['deleted'],2)
+        self.assertEqual(self.api.project.state['images'],{})
+        self.assertEqual(self.api.project.state['scale'],{})
+        self.assertEqual(self.api.project.state['preprocessing'],{})
+        self.assertEqual(self.api.project.state['prepared_prompts'],{})
+        self.assertEqual(self.api.project.state['templates'],templates)
+        self.assertEqual(list((self.api.project.root/'images').glob('*.png')),[])

@@ -60,6 +60,7 @@ class Project:
         self.state['candidates'].pop(image_id, None)
         self.state['scale'].pop(image_id, None)
         self.state.get('preprocessing', {}).pop(image_id, None)
+        self.state.get('prepared_prompts', {}).pop(image_id, None)
         (self.root / 'images' / f'{image_id}.png').unlink(missing_ok=True)
         for path in (self.root / 'masks').glob(f'{image_id}_*.png'): path.unlink()
         self.save()

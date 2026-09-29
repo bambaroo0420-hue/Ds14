@@ -405,3 +405,12 @@ def preprocessing_preview(image_id:str,mode:str='overlay',thumbnail:bool=False):
         if thumbnail:im.thumbnail((260,170))
         return png(np.asarray(im.convert('RGB')))
     except (KeyError,ValueError) as e:fail(e)
+
+@app.delete('/api/images')
+def clear_images():
+    if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 완료 후 이미지를 비우세요.')
+    try:
+        ids=list(project.state['images'])
+        for image_id in ids:project.delete_image(image_id)
+        return {'deleted':len(ids)}
+    finally:model_lock.release()
