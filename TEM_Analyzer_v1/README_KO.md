@@ -51,3 +51,26 @@ python -m unittest discover -s tests -v
 기본 API/저장 테스트는 SAM 가중치 없이 실행됩니다. 실제 회사 PC에서 먼저 1장으로 모델 로드, grid 8/16, 추가 점, 후보 복제, 브러시, 레이어, 저장 재실행을 확인하세요. 평가에는 기본 SAM과 수정 모델의 동일 이미지·동일 prompt 및 엔지니어 수정 시간을 분리해 기록하세요.
 
 ROI 내부 재분할은 생성된 마스크를 부모 마스크 내부로 제한합니다. 부모 밖으로 분할을 넓혀야 한다면 일반 추가 점/box 후보를 사용하세요.
+
+## 회사 서버 테스트 코드
+
+회사 TEM 이미지 없이 합성 영상으로 실행·저장 경로를 확인합니다. 테스트는 임시 프로젝트를 사용하고 끝나면 삭제합니다. 실행 중인 웹 앱 데이터는 건드리지 않습니다.
+
+```bash
+cd TEM_Analyzer_v1
+python smoke_test.py
+```
+
+VS Code **PORTS** 탭에서 전달된 주소도 확인하려면 서버를 별도 터미널에서 실행한 뒤:
+
+```bash
+python smoke_test.py --url http://127.0.0.1:8765
+```
+
+SAM 체크포인트·Torch·segment-anything이 준비되면 점/box, ROI 재분할 및 작은 grid 2를 추가 검사합니다. A100은 `--device cuda`, CPU는 `--device cpu`를 선택하세요. CPU ViT-H는 매우 느릴 수 있습니다.
+
+```bash
+python smoke_test.py --checkpoint /path/to/sam_vit_h.pth --variant vit_h --device cuda
+```
+
+학습된 동일 구조 decoder 또는 별도 TorchScript 후단 모델 연결 검사에는 `--decoder /path/to/decoder.pth` 또는 `--refiner /path/to/refiner.ts`를 추가합니다. 현재 경로의 이미지를 읽거나 회사 데이터를 외부로 보내지 않습니다. 성공은 기능 연결 확인이며 회사 TEM 정확도를 의미하지 않습니다.
