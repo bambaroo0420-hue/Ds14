@@ -16,7 +16,9 @@ const native=Object.getOwnPropertyDescriptor(Image.prototype,'src');
 function LocalImage(){let im=new Image();Object.defineProperty(im,'src',{set(url){let mode=url.includes('/preprocessing/')?(url.includes('mode=processed')?'cleaned':'image'):url.includes('/images/')?'image':url.includes('layer-mask')?'union':url.includes('/1.png')?'left':'right';setTimeout(()=>native.set.call(im,fixture(mode)),mode==='left'?25:1)}});return im}
 const state={images:{a:{name:'synthetic',width:16,height:8}},templates:{empty:{id:'empty',name:'empty',scale_roi:null,text_rois:[]}},selected_template:'empty',layers:[{id:1,name:'A',color:'#0088ff'}],candidates:{a:[{id:1,source:'test',area:32,predicted_iou:.9},{id:2,source:'test',area:32,predicted_iou:.8}]},scale:{}};
 const calls=[];
+const windowStub={dispatchEvent(){},addEventListener(){}};
 const context=vm.createContext({console,Image:LocalImage,setTimeout:fn=>{queueMicrotask(fn)},ResizeObserver:class{observe(){}},document:{addEventListener(){},getElementById(id){assert(elements[id],'missing HTML id '+id);return elements[id]},createElement(tag){assert.equal(tag,'canvas');return createCanvas(1,1)},querySelectorAll(){return []}},fetch:async(url,opts)=>{calls.push(url);let data=url.endsWith('/state')?state:url.endsWith('/prompts/grid')?{points:[[2,2],[6,2]]}:url.endsWith('/prompts/ml')?{points:[[10,3]],count:1}:{};return {ok:true,headers:{get:()=> 'application/json'},json:async()=>data}},confirm:()=>true,prompt:()=>null});
+context.window=windowStub;context.Event=class Event{constructor(type){this.type=type}};
 vm.runInContext(fs.readFileSync(path.join(root,'web/roi_editor.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(root,'web/app.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(root,'web/v2.js'),'utf8'),context);

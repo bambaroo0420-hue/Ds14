@@ -18,6 +18,9 @@
 | `services/layers.py` | 레이어 합집합, 충돌, 공유 경계, 대응 | 자동 보정 폭·층 순서 |
 | `algorithms/metrology.py` | 강건 직선·변환·경계 교차 | 회전/두께/CD 계산 |
 | `services/measurement.py` | 검수 조건·입력 해시·계측 버전 | 결과 만료 조건 |
+| `services/scopes.py` | 레이어 없는 선택 mask target·부분 GT | 검수 hash·unknown 계약 |
+| `services/prompt_transfer.py` | 재사용 preset·정규화/ECC 좌표 변환 | 정합 QC·pixel-centre 기준 |
+| `algorithms/orientation.py` | Hough/구조 텐서 보조 방향 | 프레임·문자 제외·방향 합의 |
 | `routes/workflow.py` | `/api/workflow/*` 기능 연결·출력 | 새 HTTP 기능 |
 | `jobs/manager.py` | 이미지/단계별 직렬 실행·취소·재시도 | 일괄 작업 |
 | `web/bridge.js` | 기존 화면과 새 모듈의 어댑터 | 공통 상태 접근 |
@@ -25,6 +28,7 @@
 | `web/modules/metrology.js` | 회전·계측 화면 | 측정 옵션 |
 | `web/modules/batch.js` | 진행률·취소·실패 재시도 | 일괄 처리 UI |
 | `web/modules/workflow.js` | 자동 제외·레이어 경계 화면 조립 | 페이지 기능 연결 |
+| `web/modules/scopes.js`, `prompt_transfer.js` | 선택 범위·프롬프트 재사용 UI | 저장·미리보기·별도 실행 |
 | `tests/`, `tools/` | 수치/API 테스트·실제 모델 검증 | 회귀 재현 |
 
 경로가 짧게 쓰인 Python 파일은 모두 `tem_analyzer/` 아래입니다.

@@ -56,7 +56,7 @@ class ModelService:
             raise ValueError('기존 256px 이진마스크 TorchScript는 v2 정밀보정 계약과 다릅니다. Lab adaptation.pt를 사용하세요.')
         model=model.to(device).eval()
         self.model=model;self.predictor=SamPredictor(model);self.refiner=refiner;self.refiner_kind=kind;self.cfg=cfg;self.image_key=None
-        self.info=dict(variant=variant,device=device,checkpoint=str(checkpoint),checkpoint_sha256=base_sha,decoder_path=decoder_path,adaptation_path=adaptation_path,adaptation_sha256=file_hash(adaptation_path or decoder_path) if (adaptation_path or decoder_path) else None,refiner=kind,single_mask=True,adapted=bool(learned or pack),score_calibrated=False if (learned or pack) else None)
+        self.info=dict(variant=variant,device=device,checkpoint=str(checkpoint),checkpoint_sha256=base_sha,decoder_path=decoder_path,adaptation_path=adaptation_path,adaptation_sha256=file_hash(adaptation_path or decoder_path) if (adaptation_path or decoder_path) else None,refiner=kind,single_mask=bool(learned or pack),adapted=bool(learned or pack),score_calibrated=False if (learned or pack) else None)
         return self.info
     def context(self,image):
         return dict(image_sha256=image_hash(image),model_sha256=self.info.get('checkpoint_sha256'),adaptation_sha256=self.info.get('adaptation_sha256'),shape=list(image.shape))

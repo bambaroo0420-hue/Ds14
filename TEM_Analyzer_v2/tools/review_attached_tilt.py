@@ -24,7 +24,7 @@ def main(a):
     image=np.asarray(Image.open(a.image).convert('RGB'));h,w=image.shape[:2]
     project=Project(out/'project');iid=project.add_image(Path(a.image).read_bytes(),'attached_45deg.png')
     project.state.setdefault('alignments',{});project.state.setdefault('annotation_proposals',{})
-    proposal=propose_annotations(image,read_words(image,a.ocr_dir,'en'))
+    proposal=propose_annotations(image,read_words(image,a.ocr_dir,'en',enhanced=True))
     project.state['preprocessing'][iid]['auto_regions']=proposal['template']
     project.state['annotation_proposals'][iid]=proposal
     preview=Image.fromarray(image);d=ImageDraw.Draw(preview)

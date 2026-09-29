@@ -10,7 +10,7 @@ const canvas=$('canvas'),ctx=canvas.getContext('2d'),host=$('canvasHost');
 function say(msg){$('message').textContent=msg;$('message').style.display='block';setTimeout(()=>$('message').style.display='none',4500)}
 async function confirmAction(message){return typeof window!=='undefined'&&window.TEM?.confirm?window.TEM.confirm(message):confirm(message)}
 async function api(path,body,method='POST') {const r=await fetch('/api/'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});if(!r.ok){let x;try{x=await r.json()}catch{x={detail:r.statusText}}throw Error(x.detail||'요청 실패')}return r.headers.get('content-type')?.includes('application/json')?r.json():r}
-async function task(fn){if(uiBusy)return;uiBusy=true;const controls=[...document.querySelectorAll('button,input,select')].map(e=>[e,e.disabled]);for(const [e] of controls)e.disabled=true;$('status').textContent='처리 중...';try{await fn();$('status').textContent='완료'}catch(e){say(e.message);$('status').textContent='오류: '+e.message}finally{uiBusy=false;for(const [e,disabled] of controls)e.disabled=disabled;renderGallery()}}
+async function task(fn){if(uiBusy)return;uiBusy=true;const controls=[...document.querySelectorAll('button,input,select')].map(e=>[e,e.disabled]);for(const [e] of controls)e.disabled=true;$('status').textContent='처리 중...';try{await fn();$('status').textContent='완료'}catch(e){say(e.message);$('status').textContent='오류: '+e.message}finally{uiBusy=false;for(const [e,disabled] of controls)e.disabled=disabled;renderGallery();window.dispatchEvent(new Event('tem:idle'))}}
 async function refresh(){
  const oldCandidate=$('candidateSelect').value,oldLayer=$('layerSelect').value;
  state=await api('state',null,'GET');

@@ -46,7 +46,8 @@ def detect_scale(image,roi,words):
             if -h*.25<=bx-ar<=h*3 and abs((ay+ab-by-bb)/2)<h*.7:
                 groups.append(dict(text=a['text']+' '+b['text'],box=[ax,min(ay,by),br,max(ab,bb)],confidence=min(a['confidence'],b['confidence'])))
     for word in groups:
-        match=re.search(r'(\d+(?:[.,]\d+)?)\s*(nm|um)\b',word['text'],re.I)
+        # A material thickness label such as 'TaOx ~ 7 nm' is NOT a scale label.
+        match=re.fullmatch(r'\s*(\d+(?:[.,]\d+)?)\s*(nm|um)\s*',word['text'],re.I)
         if not match:continue
         length=float(match[1].replace(',','.'));unit=match[2].lower()
         if length<=0:continue
@@ -55,6 +56,11 @@ def detect_scale(image,roi,words):
             a,b=bar['bar'];cx=(a[0]+b[0])/2;cy=(a[1]+b[1])/2
             # Never calibrate from a text glyph's short horizontal stroke.
             bx0,by0,bx1,by1=bar['box'];text_height=max(1,ty1-ty0)
+            # CRAFT may merge a label and the bar into one tall OCR rectangle.
+            # Only shorten its effective text height when a long rectangular bar
+            # sits below the rectangle's midpoint; glyph strokes still fail width.
+            if by0>ty0+text_height*.55 and bx1-bx0>=(tx1-tx0)*.65:
+                text_height=max(1,min(text_height,by0-ty0))
             overlap=max(0,min(tx1,bx1)-max(tx0,bx0))*max(0,min(ty1,by1)-max(ty0,by0))
             # OCR boxes include padding and an axis-aligned box may overlap a
             # tilted bar. Permit the bottom margin, never the middle of text.

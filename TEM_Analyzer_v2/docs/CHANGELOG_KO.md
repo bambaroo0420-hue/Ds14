@@ -1,4 +1,13 @@
-# v2.1 변경 기록 — 2026-09-30
+# 변경 기록 — 2026-09-30
+
+## v2.2.0 1차 개선
+
+- 레이어 독립 선택 mask scope, 별도 검수, partial binary GT/unknown 보존, 일괄 회전·계측·출력.
+- 프롬프트 preset 저장 및 정규화/ECC 이전 미리보기. 자동 SAM 실행과 분리.
+- 기본 SAM 공식 multi-mask 경로 복구, 학습 bundle single-mask 계약 유지.
+- 과대 OCR/미검증 bar 기본 비선택, scale label+bar 결합, 확대 OCR 선택.
+- 프레임/제외 경계 회전 fit 차단, Hough+구조 텐서 보조 방향 모드.
+- 75개 Python 회귀, Node UI 회귀, 실제 SAM 비교 48회와 19 crop 5장·부분 선택 일괄 테스트. 자세한 수치와 한계는 `V220_REVIEW_KO.md`.
 
 ## 추가점/공개 이미지 검토 업데이트 (UI 자원 2.1.2)
 

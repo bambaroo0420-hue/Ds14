@@ -29,7 +29,7 @@ class Project:
             elif self.state.get('schema_version')!=2:raise ValueError('지원하지 않는 프로젝트 버전')
         else:
             self.state=dict(schema_version=2,images={},templates={'default':copy.deepcopy(DEFAULT_TEMPLATE)},selected_template='default',layers=[dict(id=1,name='Layer 1',color='#28dc82',locked=False)],candidates={},next_candidate=1,scale={})
-        for key,default in [('preprocessing',{}),('prepared_prompts',{}),('runs',[]),('history',[]),('future',[]),('revision',0),('protected',{}),('annotations',{})]:self.state.setdefault(key,default)
+        for key,default in [('preprocessing',{}),('prepared_prompts',{}),('runs',[]),('history',[]),('future',[]),('revision',0),('protected',{}),('annotations',{}),('mask_scopes',{})]:self.state.setdefault(key,default)
         self.state.setdefault('legacy_templates_enabled',False)
         for iid,items in self.state['candidates'].items():
             for c in items:c.setdefault('active',True);c.setdefault('deleted',False)
@@ -75,7 +75,7 @@ class Project:
         paths=[self.root/'images'/f'{iid}.png']
         for folder in ('masks','logits'):paths+=list((self.root/folder).glob(f'{iid}_*'))
         paths=[p for p in paths if p.exists()];trash=self.root/'trash'/uuid.uuid4().hex;trash.mkdir()
-        metadata={k:copy.deepcopy(self.state.get(k,{}).get(iid)) for k in ('images','candidates','scale','preprocessing','prepared_prompts','protected','annotations','alignments','measurements','annotation_proposals','gt_reviews')}
+        metadata={k:copy.deepcopy(self.state.get(k,{}).get(iid)) for k in ('images','candidates','scale','preprocessing','prepared_prompts','protected','annotations','alignments','measurements','annotation_proposals','gt_reviews','mask_scopes')}
         atomic_json(trash/'journal.json',{'image_id':iid,'files':[str(p.relative_to(self.root)) for p in paths],'metadata':metadata,'created':time.time()})
         moved=[]
         try:

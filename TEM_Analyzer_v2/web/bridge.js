@@ -15,6 +15,8 @@ window.TEM = {
     document.body.append(dialog);dialog.showModal();
   })},
   refresh:()=>refresh(), switchImage, chooseCandidate,
+  promptDraft:()=>({auto_points:[...gridPoints,...mlPoints],manual_points:points.map(p=>[...p]),box:box?[...box]:null,manual_mode:document.getElementById('manualMode').value,feature_settings:featurePromptConfig()}),
+  setPromptDraft(d){points=d.manual_points;gridPoints=d.auto_points;mlPoints=[];box=d.box;document.getElementById('manualMode').value=d.manual_mode;updatePromptCount();redraw()},
   candidates:()=>sortedCandidates(),
   clearRegionDraft(){templateDraft=null;analysisRegionDraft=null;scaleDraft=null;textDraft=[];restoreScale()},
   resetImage(){return loadImage()},

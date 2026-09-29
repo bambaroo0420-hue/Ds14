@@ -17,6 +17,7 @@ def fingerprint(project, iid):
     payload['preprocessing']={k:record.get(k) for k in ('sam_filter','edge_filter')}
     payload['preprocessing']['effective_regions']=effective_template(project,iid)
     payload['layers']=project.state['layers']
+    payload['mask_scopes']={k:v['candidate_ids'] for k,v in project.state.get('mask_scopes',{}).get(iid,{}).items()}
     return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
 

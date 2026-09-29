@@ -14,6 +14,8 @@ from ..algorithms.annotations import propose_annotations
 from ..algorithms.metrology import warp
 from ..services.layers import active, unions, fingerprint, inspect_conflicts, propose_boundaries, apply_boundaries, transfer_layers
 from ..services.measurement import alignment, alignment_current, run_measurement, measurement_hash
+from ..services.scopes import save_scope, confirm_scope, require_scope_review, scope_arrays
+from ..services.prompt_transfer import save_preset, preview_preset
 from ..labels import compose, EXCLUDED
 from ..preprocessing import model_input, restrict_mask, exclusion_mask
 from ..jobs.manager import JobManager
@@ -34,7 +36,7 @@ def install(app,project,model,model_lock,gate):
     def detect(iid,settings):
         from ..ocr import read_words
         image=project.image(iid)
-        words=read_words(image,settings.get('ocr_dir','models/easyocr'),settings.get('language','en'))
+        words=read_words(image,settings.get('ocr_dir','models/easyocr'),settings.get('language','en'),enhanced=bool(settings.get('enhanced_ocr',True)))
         proposal=propose_annotations(image,words)
         proposal['input_hash']=fingerprint(project,iid)
         project.state['annotation_proposals'][iid]=proposal
@@ -50,7 +52,8 @@ def install(app,project,model,model_lock,gate):
         project.invalidate(iid,'자동 제외 영역 적용')
         return {'regions':len(proposal['regions']),'scale':project.state['scale'][iid]}
 
-    def require_gt(iid):
+    def require_gt(iid,scope_id=None):
+        if scope_id:return require_scope_review(project,iid,scope_id)
         assigned=[c for c in active(project,iid) if c['layer_id'] is not None]
         if not assigned or any(not c.get('reviewed') for c in assigned):raise ValueError('배정된 모든 활성 마스크를 검수 확정하세요. 미지정 후보는 유지할 수 있습니다.')
         labels,valid,conflict=compose(project,iid)
@@ -100,7 +103,7 @@ def install(app,project,model,model_lock,gate):
             value=run_measurement(project,iid,settings.get('measurement',{}));project.state['measurements'][iid]=value
             return value['summary']
         if stage=='gt':
-            review=require_gt(iid);project.state['gt_reviews'][iid]=review
+            review=require_gt(iid,settings.get('scope_id'));project.state['gt_reviews'][iid]=review
             return review
         raise ValueError('지원하지 않는 작업')
 
@@ -170,6 +173,28 @@ def install(app,project,model,model_lock,gate):
             for c in items:c.update(reviewed=True)
         else:raise ValueError('지원하지 않는 일괄 편집')
         return {'count':len(items),'action':action}
+
+    @app.post('/api/workflow/scopes/save')
+    def scopes_save(body:dict):
+        return save_scope(project,body['image_id'],body.get('scope_id','target'),body.get('candidate_ids',[]),body.get('name','분석 대상'))
+
+    @app.post('/api/workflow/prompt-presets/save')
+    def preset_save(body:dict):
+        return save_preset(project,body['image_id'],body['preset_id'],body['draft'])
+
+    @app.post('/api/workflow/prompt-presets/preview')
+    def preset_preview(body:dict):
+        return preview_preset(project,body['image_id'],body['preset_id'],body.get('method','normalized'))
+
+    @app.post('/api/workflow/scopes/confirm')
+    def scopes_confirm(body:dict):
+        return confirm_scope(project,body['image_id'],body.get('scope_id','target'))
+
+    @app.get('/api/workflow/scopes/{iid}/{key}.png')
+    def scopes_preview(iid:str,key:str):
+        _,_,valid,_=scope_arrays(project,iid,key);rgb=project.image(iid).astype(float)
+        rgb[valid]=rgb[valid]*.5+np.array([30,230,150])*.5
+        return Response(image_bytes(rgb.astype('uint8')),media_type='image/png')
 
     @app.post('/api/workflow/layers/order')
     def layer_order(body:dict):
@@ -241,27 +266,36 @@ def install(app,project,model,model_lock,gate):
 
     @app.post('/api/workflow/gt/confirm')
     def gt_confirm(body:dict):
-        iid=body['image_id'];review=require_gt(iid);project.state['gt_reviews'][iid]=review;return review
+        iid=body['image_id'];review=require_gt(iid,body.get('scope_id'));project.state['gt_reviews'][iid]=review;return review
 
-    def result_zip(ids,include_gt=False):
+    def result_zip(ids,include_gt=False,scope_id=None):
         output=io.BytesIO();csvbuf=io.StringIO();writer=csv.writer(csvbuf)
-        writer.writerow(['image_id','image_name','layer_id','axis','position_px','segment','status','length_px','length_nm','review_status'])
+        writer.writerow(['image_id','image_name','layer_id','scope_id','axis','position_px','segment','status','length_px','length_nm','review_status'])
         # Validate every item before producing any successful-looking partial export.
         for iid in ids:
             project.require_image(iid)
-            if include_gt:require_gt(iid)
+            if scope_id:scope_arrays(project,iid,scope_id)
+            if include_gt:require_gt(iid,scope_id)
             if not include_gt and not project.state['alignments'].get(iid):raise ValueError('먼저 회전 결과를 생성하세요. GT는 별도 내보내기입니다.')
             if project.state['alignments'].get(iid):alignment_current(project,iid)
             met=project.state['measurements'].get(iid)
+            if met and met.get('scope_id')!=scope_id:raise ValueError('계측 결과의 선택 범위와 출력 범위가 다릅니다. 같은 범위로 다시 측정하거나 출력하세요.')
             if met and met['input_hash']!=measurement_hash(project,iid):raise ValueError('만료된 계측 결과가 있습니다. 다시 측정하세요.')
         with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as z:
-            z.writestr('export_mode.json',json.dumps({'include_gt':include_gt,'note':'aligned_labels are assigned SAM masks, not GT, unless include_gt=true. Provisional measurements retain review_status.'}))
+            z.writestr('export_mode.json',json.dumps({'include_gt':include_gt,'scope_id':scope_id,'partial_binary_target':bool(scope_id),'note':'Selected scope label 1 is a binary target union, not a semantic material class. Unselected is UNKNOWN, never background. Provisional measurements retain review_status.'}))
             for iid in ids:
-                if include_gt:z.writestr(iid+'/gt.zip',export_bytes(project,iid))
+                if include_gt:
+                    if scope_id:
+                        _,sl,sv,items=scope_arrays(project,iid,scope_id)
+                        z.writestr(iid+'/partial_gt/labels.png',image_bytes(sl))
+                        z.writestr(iid+'/partial_gt/valid.png',image_bytes(sv.astype('uint8')*255))
+                        z.writestr(iid+'/partial_gt/metadata.json',json.dumps(dict(require_gt(iid,scope_id),label_codes={'target':1,'unknown':65535,'uncertain':65534,'excluded':65533},image=project.state['images'][iid]),ensure_ascii=False,indent=2))
+                    else:z.writestr(iid+'/gt.zip',export_bytes(project,iid))
                 met=project.state['measurements'].get(iid)
                 rot=project.state['alignments'].get(iid)
                 if rot and rot['input_hash']==fingerprint(project,iid):
-                    labels,valid,_=compose(project,iid,reviewed_only=include_gt)
+                    if scope_id:_,labels,valid,_=scope_arrays(project,iid,scope_id)
+                    else:labels,valid,_=compose(project,iid,reviewed_only=include_gt)
                     z.writestr(iid+'/aligned_image.png',image_bytes(warp(project.image(iid),rot['transform'],1)))
                     z.writestr(iid+'/aligned_labels.png',image_bytes(warp(labels,rot['transform'],0,EXCLUDED)))
                     z.writestr(iid+'/aligned_valid.png',image_bytes(warp(valid.astype('uint8')*255,rot['transform'],0)))
@@ -271,7 +305,7 @@ def install(app,project,model,model_lock,gate):
                     for row in met['rows']:
                         name=project.state['images'][iid]['name']
                         if name.startswith(('=','+','-','@')):name="'"+name
-                        writer.writerow([iid,name,met['layer_id'],met['axis'],row['position_px'],row.get('segment'),row['status'],row.get('length_px'),row.get('length_nm'),met.get('review_status','unknown')])
+                        writer.writerow([iid,name,met['layer_id'],met.get('scope_id'),met['axis'],row['position_px'],row.get('segment'),row['status'],row.get('length_px'),row.get('length_nm'),met.get('review_status','unknown')])
             z.writestr('measurements.csv','\ufeff'+csvbuf.getvalue())
         return Response(output.getvalue(),media_type='application/zip',headers={'Content-Disposition':'attachment; filename="TEM_results.zip"'})
 
@@ -279,7 +313,7 @@ def install(app,project,model,model_lock,gate):
     def export(body:dict):
         ids=body.get('image_ids') or list(project.state['images'])
         if not ids:raise ValueError('출력할 이미지가 없습니다.')
-        return result_zip(ids,bool(body.get('include_gt',False)))
+        return result_zip(ids,bool(body.get('include_gt',False)),body.get('scope_id'))
 
     @app.get('/api/workflow/trash')
     def trash():

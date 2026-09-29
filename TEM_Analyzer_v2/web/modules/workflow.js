@@ -1,8 +1,12 @@
-import {mountSelection} from './selection.js?v=2.1.2';
-import {mountMetrology} from './metrology.js?v=2.1.2';
-import {mountBatch} from './batch.js?v=2.1.2';
+import {mountSelection} from './selection.js?v=2.2.0';
+import {mountMetrology} from './metrology.js?v=2.2.0';
+import {mountBatch} from './batch.js?v=2.2.0';
+import {mountScopes} from './scopes.js?v=2.2.0';
+import {mountPromptTransfer} from './prompt_transfer.js?v=2.2.0';
 const T=window.TEM,$=id=>document.getElementById(id);let boundaryToken=null,boundaryImage=null;
-const selections=mountSelection(T),metrology=mountMetrology(T),batch=mountBatch(T,metrology);
+const selections=mountSelection(T),scopes=mountScopes(T,selections),metrology=mountMetrology(T),batch=mountBatch(T,metrology);
+const promptTransfer=mountPromptTransfer(T);
+const ocrMode=document.createElement('label');ocrMode.className='inline-check';ocrMode.innerHTML='<input id="enhancedOCR" type="checkbox" checked>확대 재검출 OCR (약한 문자 보완, 더 느림)';$('detectAnnotations').before(ocrMode);
 function render(){
   $('samImageSelect').innerHTML=Object.entries(T.state.images||{}).map(([id,x])=>`<option value="${id}">${T.escape(x.name)}</option>`).join('');$('samImageSelect').value=T.current||'';
   const masks=(T.state.candidates?.[T.current]||[]).filter(c=>!c.deleted&&c.active!==false);
@@ -22,13 +26,13 @@ function render(){
   if(boundaryImage!==T.current){boundaryToken=null;boundaryImage=T.current;$('layerBoundaryPreviewImage').removeAttribute('src')}
   const p=T.state.annotation_proposals?.[T.current];
   $('annotationInfo').textContent=p?`${p.regions.length}개 검출 · ${p.scale.nm_per_px?Number(p.scale.nm_per_px).toFixed(6)+' nm/px':'스케일 미검출'} · ${p.scale.ambiguous?'복수 후보 검토 필요':''}`:'이미지 전체에서 문자와 바를 검출합니다.';
-  $('annotationRows').innerHTML=p?p.regions.map((r,i)=>`<tr><td><input type="checkbox" checked data-region-index="${i}" aria-label="제외 박스 ${i+1}">${T.escape(r.kind)}</td><td>${T.escape(r.text)}</td><td>${r.box.map(v=>Math.round(v)).join(', ')}</td></tr>`).join(''):'';
+  $('annotationRows').innerHTML=p?p.regions.map((r,i)=>`<tr><td><input type="checkbox" ${r.recommended===false?'':'checked'} data-region-index="${i}" aria-label="제외 박스 ${i+1}">${T.escape(r.kind)}</td><td>${T.escape(r.text)} ${T.escape(r.reason||'')}</td><td>${r.box.map(v=>Math.round(v)).join(', ')}</td></tr>`).join(''):'';
   if(p)$('annotationPreview').src=`/api/workflow/annotations/${T.current}.png?v=${T.state.revision}`;else $('annotationPreview').removeAttribute('src');
   selections.render();
 }
 $('toggleLegacyTemplates').onclick=()=>T.task(async()=>{await T.api('workflow/templates/enabled',{enabled:!T.state.legacy_templates_enabled});T.clearRegionDraft();await T.refresh()});
 $('samImageSelect').onchange=e=>T.switchImage(e.target.value);
-$('detectAnnotations').onclick=()=>T.task(async()=>{await T.api('workflow/annotations/detect',{image_id:T.current,ocr_dir:$('ocrDir').value});await T.refresh()});
+$('detectAnnotations').onclick=()=>T.task(async()=>{await T.api('workflow/annotations/detect',{image_id:T.current,ocr_dir:$('ocrDir').value,enhanced_ocr:$('enhancedOCR').checked});await T.refresh()});
 $('applyAnnotations').onclick=()=>T.task(async()=>{const indices=[...document.querySelectorAll('[data-region-index]:checked')].map(e=>+e.dataset.regionIndex);await T.api('workflow/annotations/apply',{image_id:T.current,region_indices:indices});T.clearRegionDraft();await T.refresh();T.say('제외 영역 적용됨. 스케일 제안값은 별도로 확인·확정하세요.')});
 $('matchLayers').onclick=()=>T.task(async()=>{const r=await T.api('workflow/layers/match',{reference_image:$('referenceImage').value,image_id:T.current,threshold:+$('matchThreshold').value});await T.refresh();T.say(`${r.proposals.length}개 후보 대응 제안: 결과를 검수하세요.`)});
 for(const [id,delta] of [['layerUp',-1],['layerDown',1]])$(id).onclick=()=>T.task(async()=>{
@@ -42,7 +46,7 @@ $('layerBoundaryPreview').onclick=()=>T.task(async()=>{
   boundaryToken=r.token;boundaryImage=T.current;$('conflictReport').textContent=JSON.stringify(r,null,2);$('layerBoundaryPreviewImage').src=`/api/workflow/boundary/${r.token}.png`;
 });
 $('layerBoundaryApply').onclick=()=>T.task(async()=>{if(!boundaryToken)throw Error('레이어 경계를 먼저 제안하세요');await T.api('workflow/boundary/apply',{token:boundaryToken});boundaryToken=null;await T.refresh();T.say('경계 적용됨. 변경 마스크를 검수 확정하세요.')});
-$('confirmGT').onclick=()=>T.task(async()=>{const r=await T.api('workflow/gt/confirm',{image_id:T.current});T.say(`GT 검수 완료: 유효 ${r.valid_pixels}px, 미지정 ${r.unknown_pixels}px`);await T.refresh()});
+$('confirmGT').onclick=()=>T.task(async()=>{const r=await T.api('workflow/gt/confirm',{image_id:T.current,scope_id:T.scopeId()});T.say(`GT 검수 완료: 유효 ${r.valid_pixels}px, 미지정 ${r.unknown_pixels}px`);await T.refresh()});
 $('restoreImage').onclick=()=>T.task(async()=>{const items=await T.api('workflow/trash',null,'GET');if(!items.length)throw Error('복원할 삭제 이미지가 없습니다');await T.api('workflow/trash/restore',{trash_id:items[0].id});await T.refresh();T.say('최근 삭제 이미지 복원됨')});
 window.addEventListener('tem:refreshed',render);
 if(T.state.layers){render();metrology.render()}

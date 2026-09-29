@@ -1,11 +1,11 @@
 export function mountBatch(T,metrology) {
   const $=id=>document.getElementById(id);let lastId=null,timer=null;
   function ids(){return $('batchScope').value==='all'?Object.keys(T.state.images):T.selectedImages.length?T.selectedImages:[T.current].filter(Boolean)}
-  function settings(){return {ocr_dir:$('ocrDir').value,apply_annotations:$('autoApplyAnnotations').checked,
+  function settings(){return {ocr_dir:$('ocrDir').value,enhanced_ocr:$('enhancedOCR').checked,apply_annotations:$('autoApplyAnnotations').checked,
     reference_image:$('referenceImage').value,match_threshold:+$('matchThreshold').value,
     sam:{grid:+$('grid').value,pred_iou:+$('pred').value,stability:+$('stability').value,nms:+$('nms').value,prompt_source:$('batchPromptSource').value,features:T.featurePromptConfig()},
     boundary:{radius:+$('layerRadius').value,max_gap:+$('layerGap').value},
-    rotation:metrology.rotationConfig(),measurement:metrology.measurementConfig()}}
+    scope_id:T.scopeId(),rotation:metrology.rotationConfig(),measurement:metrology.measurementConfig()}}
   async function poll(){
     clearTimeout(timer);
     try{
@@ -30,6 +30,6 @@ export function mountBatch(T,metrology) {
   for(const [id,kind] of [['confirmSelectedScales','scale'],['confirmSelectedRotations','rotation']]){
     $(id).onclick=()=>T.task(async()=>{await T.api('workflow/confirm-many',{image_ids:ids(),kind});await T.refresh()});
   }
-  $('exportBatch').onclick=()=>T.task(async()=>{const r=await T.api('workflow/export',{image_ids:ids()});T.download(await r.blob(),'TEM_batch_results.zip')});
+  $('exportBatch').onclick=()=>T.task(async()=>{const r=await T.api('workflow/export',{image_ids:ids(),...T.exportOptions()});T.download(await r.blob(),'TEM_batch_results.zip')});
   poll();return {poll};
 }

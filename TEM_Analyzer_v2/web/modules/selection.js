@@ -75,5 +75,5 @@ export function mountSelection(T) {
   });
   document.addEventListener('pointerup',()=>rectangle=null);
   window.addEventListener('tem:candidates',render);window.addEventListener('tem:refreshed',render);
-  return {render};
+  return {render,ids:()=>selected.size?[...selected]:[T.selectedCandidate].filter(Boolean).map(Number)};
 }
