@@ -11,7 +11,7 @@ from .prompts import ml_points, validate_points
 
 
 class FeatureConfig(BaseModel):
-    method: Literal['kmeans', 'canny', 'sobel', 'scharr', 'hybrid'] = 'kmeans'
+    method: Literal['kmeans', 'canny', 'sobel', 'scharr', 'hybrid', 'profile'] = 'kmeans'
     count: int = Field(default=12, ge=1, le=100)
     clusters: int = Field(default=5, ge=2, le=12)
     min_distance: float = Field(default=12, ge=1, le=1000)
@@ -24,11 +24,19 @@ class FeatureConfig(BaseModel):
     canny_high: float = Field(default=100, ge=0, le=255)
     gradient_percentile: float = Field(default=75, ge=1, le=99)
     edge_clearance: float = Field(default=3, ge=0, le=50)
+    analysis_side: Literal[512,1024] = 512
+    profile_angle: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    profile_scans: int = Field(default=5, ge=3, le=9)
+    profile_min_width: float = Field(default=2, ge=1, le=1000, allow_inf_nan=False)
+    profile_max_width: float = Field(default=80, ge=2, le=2000, allow_inf_nan=False)
+    profile_prominence: float = Field(default=4, ge=.1, le=100, allow_inf_nan=False)
+    profile_smooth: float = Field(default=1, ge=.2, le=4, allow_inf_nan=False)
 
     @model_validator(mode='after')
     def thresholds(self):
         if self.canny_low >= self.canny_high:
             raise ValueError('Canny 낮은 임계값은 높은 임계값보다 작아야 합니다.')
+        if self.profile_min_width>=self.profile_max_width:raise ValueError('프로파일 최소 폭은 최대 폭보다 작아야 합니다.')
         return self
 
 
@@ -61,7 +69,7 @@ def propose(image, excluded, existing=(), config=None, preview=False):
     if excluded.shape != (h, w):
         raise ValueError('제외 영역 크기 불일치')
     # Bounded working resolution: denoise controls are in this analysis pixel space.
-    ratio = min(1., 512 / max(h, w))
+    ratio = min(1., cfg.analysis_side / max(h, w))
     ww, hh = max(1, round(w * ratio)), max(1, round(h * ratio))
     small = np.asarray(Image.fromarray(image).resize((ww, hh), Image.Resampling.BILINEAR))
     ex = np.asarray(Image.fromarray(excluded.astype('uint8') * 255).resize((ww, hh), Image.Resampling.BOX)) > 0
@@ -70,12 +78,18 @@ def propose(image, excluded, existing=(), config=None, preview=False):
         sigma=cfg.sigma, median_size=cfg.median_size, range_sigma=cfg.range_sigma, nlm_h=cfg.nlm_h))
     edges = np.zeros((hh, ww), bool)
     proposals = []
-    warnings = []
+    warnings = [];diagnostics={}
     if not allowed.any():
         warnings.append('분석할 유효 영역이 없습니다.')
     else:
         clearance = None
-        if cfg.method != 'kmeans':
+        if cfg.method == 'profile':
+            from .algorithms.profile_prompts import profile_proposals
+            gray = np.asarray(Image.fromarray(source).convert('L'))
+            proposals,edges,diagnostics,notes=profile_proposals(gray,allowed,cfg,ratio)
+            warnings.extend(notes)
+            proposals=[(score,(x+.5)*w/ww-.5,(y+.5)*h/hh-.5) for score,x,y in proposals]
+        elif cfg.method != 'kmeans':
             gray = np.asarray(Image.fromarray(source).convert('L'))
             edges = _edges(gray, allowed, cfg)
             if not edges.any():
@@ -103,6 +117,7 @@ def propose(image, excluded, existing=(), config=None, preview=False):
                 proposals.append((float(max(hh, ww)), x*w/ww, y*h/hh))
     chosen, others = [], [p[:2] for p in existing]
     for _, x, y in sorted(proposals, reverse=True):
+        if not (0<=x<w and 0<=y<h):continue
         if excluded[min(h-1,int(y)), min(w-1,int(x))]:
             continue
         if any(np.hypot(x-p[0], y-p[1]) < cfg.min_distance for p in others):
@@ -114,7 +129,7 @@ def propose(image, excluded, existing=(), config=None, preview=False):
     if not chosen:
         warnings.append('추가점이 없습니다. 기존 점 간격·제외 영역·설정을 확인하세요.')
     result = dict(points=chosen, count=len(chosen), method=cfg.method, settings=cfg.model_dump(),
-                  inference_run=False, analysis_shape=[hh, ww], warnings=warnings)
+                  inference_run=False, analysis_shape=[hh, ww], warnings=warnings,diagnostics=diagnostics)
     if preview:
         def uri(a):
             b = io.BytesIO();Image.fromarray(a).save(b, format='PNG')

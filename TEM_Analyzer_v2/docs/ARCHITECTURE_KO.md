@@ -21,6 +21,7 @@
 | `services/scopes.py` | 레이어 없는 선택 mask target·부분 GT | 검수 hash·unknown 계약 |
 | `services/prompt_transfer.py` | 재사용 preset·정규화/ECC 좌표 변환 | 정합 QC·pixel-centre 기준 |
 | `algorithms/orientation.py` | Hough/구조 텐서 보조 방향 | 프레임·문자 제외·방향 합의 |
+| `algorithms/profile_prompts.py` | 얇은 층의 횡단 프로파일 점 제안 | 방향·에지 쌍·평활·폭 제한 |
 | `routes/workflow.py` | `/api/workflow/*` 기능 연결·출력 | 새 HTTP 기능 |
 | `jobs/manager.py` | 이미지/단계별 직렬 실행·취소·재시도 | 일괄 작업 |
 | `web/bridge.js` | 기존 화면과 새 모듈의 어댑터 | 공통 상태 접근 |
@@ -54,3 +55,9 @@ v2.2.1 계측 표본 정책은 `algorithms/metrology.measure(..., sampling=...)`
 새 제외 정책은 원시 행을 삭제하지 말고 `quality_flags`/`exclusion_reasons`에 추가하세요.
 값으로부터 임의로 이상치 임계값을 학습하거나 최종 길이를 조작하지 않습니다.
 알고리즘 변경으로 값의 의미가 달라지면 `services/measurement.measurement_hash`의 버전 표식도 갱신하세요.
+
+v2.2.2 프로파일 설정은 `feature_prompts.FeatureConfig` → `propose` → `profile_proposals` 순서입니다.
+점 준비는 SAM 호출과 분리되며, 새 방식은 단일/일괄의 같은 FeatureConfig 검증을 거칩니다.
+`tools/compare_profile_prompts.py`는 생성 GT와 공개 무GT 데이터를 명시적으로 구분합니다.
+`tools/validate_real_orientation.py`는 원본을 읽기만 하며, 알려진 추가 회전의 일관성을 검증합니다. 기준 방향 정확도 시험으로 해석하지 마세요.
+방향 보조 모드는 기존 합의가 충분할 때 유지하고, 실패/불일치 시 L2 Canny의 제한된 설정을 탐색합니다. 보조 후보는 텐서와 2° 미만 일치해야 높은 신뢰도 제안이며, 그 외는 미확정 경고입니다. 높은 신뢰도도 물질 경계 인증은 아닙니다.

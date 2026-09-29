@@ -109,3 +109,33 @@
 2. 실제 TEM 영상의 영상방향 보조 추정: 첨부45° 및 다른공개 영상을 알려진 각도로 회전해 equivariance/실패를 검사. 합성 stripes 성공만으로 일반화 주장 금지.
 3. UI 현재 canvas는 한 후보 mask(예:6)를 보여도 분석scope는 [6,8]일 수 있음. SAM 선택집합 미리보기는 있지만 회전/일괄에서도 전체 선택집합 표시 또는 명확한 legend를 제공하면 좋음.
 4. preset 일괄 재사용은 여전히 미구현. 시간 범위 내 검증 가능한 경우 별도 실패 처리·미리보기 계획. 07:39:53 KST 이후 새 실험 시작하지 말기.
+
+### 03:52 KST 전후 — v2.2.1 게시 완료
+
+- GitHub branch/PR #1 업데이트: commit `6fd06724cdba169256853a68cb7b6da973a8d6d8`, tree `0ea8640fe81038542c1bc16c75ad56d082720963`, parent `3fd554e909574cb3eb3ec2ad2dbb9fa25f7a7db8`. 로컬 staged tree와 원격 tree 일치 후 게시. 로컬 fetch/update-ref 후 git status 깨끗함. main 미병합.
+- Desktop 최종 Python83개13.054s / Node 회귀 / pip check 통과, 소스manifest125개. 가중치·영상·테스트프로젝트는 미업로드.
+- 사용자 앱8876 재시작 완료: PID34972 / exec session15630, Desktop cwd, 기존 `test-output/crop19-v22/project` 유지. 진행 중 작업 없음을 확인했고 모델은 미로드였음. 사용자 탭은 임의 새로고침하지 않음.
+- GUI8883은 PID29100 / session70063 최신 Python+UI. 알고리즘 hash 변경으로 이전 측정 만료를 실제 확인한 뒤 5장10/10재실행. 3cell+7°의 저장된 scope [6,8], 중앙60/다중·프레임제외, 유효24개/평균163.226nm 표시 확인.
+- Node 모사 DOM 실행 시 NODE_PATH는 bundled `C:/Users/DJ.LEE/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules`. 설치를 반복할 필요 없음.
+- 함수별 자료: `tools/validate_measurement_sampling.py`, `tools/validate_orientation_controls.py`. 전자는 기존 SAM 결과 사용; 이번 반복에서 실제 SAM 신규 추론은 하지 않았음.
+- 다음은 위 thin-layer 프롬프트/실제 TEM 방향 비교 우선순위로 계속. 이 마지막 게시 메타데이터는 staging 작업 기록이며 다음 코드 게시 때 포함한다. 자동 예약은 유지하며 종료 시각에 비활성화한다.
+
+### 04:18 KST 전후 — 3차 v2.2.2 검증 완료, 게시 준비
+
+- `algorithms/profile_prompts.py`: 반대 부호 밝기 경계 사이에 점을 놓는 횡단 프로파일. 방향 자동/수동, 원본 px 폭 제한, 512/1024 분석. 학습 ML/물질 분류 아님. SAM 실행과 분리, 기존 Grid/Sobel 유지.
+- 실제 SAM24회 비교 완료: 합성0/+25/−45°×4방식 + 공개140/158/hafnia h×4방식. cold 추론 시간 합376.95s. Profile은 생성12띠 모두에 점, oracle 최고IoU 평균.9188; Grid.2688, Sobel.0148, Grid+Profile.4864. 자동 후보 선택 정답률 아님. 공개 전문가GT 없음, 해상도가 다른 레시피 비교.
+- 실제 GUI8884: 미리보기는 SAM 미실행/점 미추가, 추가후ML16→실제SAM10후보. 0/−45 두장 Ctrl다중선택→SAM만·Profile만 일괄2/2, 신규6/18후보, 레이어 모두미배정. 신규 실제SAM 총27회(비교24+UI3). JS오류없음. `test-output/profile-ui-v222`, PID25172 / session58264, 모델로드됨.
+- 실제 GUI8883: 저장target[6,8] 전체 큰미리보기, 3셀 중양끝2개만초록/중앙unknown 확인. 이전 후보단독canvas와 실제대상혼동 개선. UI2.2.2+Python2.2.1(해당API변경없음), PID29100/session70063.
+- 실제TEM 추가회전28사례: 공개43/140/143의21사례 기존최대상대차이.30349°유지. 첨부−15추가의 기존14.78485°오차재현(기존도low-confidence).
+- L2다중설정 항상사용하면 첨부equivariance .473°로작아도 기준각자체가약4°다른반례! 채택하지않음. 기존합의유지+실패/불일치때만fallback, fallbacktensor합의2°미만으로엄격제한. 첨부5변형은3.26~3.99°차이+모두낮은신뢰도. 자동수평해결완료아님.
+- 방향합성22각도 최대.03154°, 균일/잡음거절, 동심원/체크/물결낮은신뢰도. 동심원이거절대신낮은신뢰도로바뀐한계기록.
+- 방향검증첫실행은두번째프로젝트경로오기로JSON저장실패. 도구입력검증/단계저장수정후재실행. 무효실행중복카운트금지.
+- Python90개16.778s, Node UI통과. Desktop최종테스트와게시진행중. `docs/V222_REVIEW_KO.md`에수치/실패/장단점/공식SAM·SciPy·OpenCV·μSAM·HQ-SAM자료기록. 외부모델미설치, 원본미변경.
+- 증거 workspace `evidence-v222/selected-two-cells.png`, `profile-ui-sam.png`, `profile-batch.png`. CUA profileTab id8, samplingTab id7 handoff.
+
+#### 다음 반복 후보
+
+1. preset 일괄 적용 미구현: normalized/ECC각이미지별미리보기→검토된draft저장→SAM단계별실행, 실패이미지격리/기존후보보존. 기존개별preset은자동SAM아님. 사용자큰요구중남은명확한기능.
+2. 얇은층 SAM crop/ROI 또는 대비극성·박스프롬프트 비교. 새 모델 다운로드 전 기존체크포인트로검증가능한범위. `profile`후보수/IoUoracle를semantic정확도로오해하지않기.
+3. 첨부45변형 보조회전은여전히미해결. tensor단독각이나프로파일방향을추가해도물질경계검증대체아님. 기준라인 GT없이 "완전해결"이라고하지않기.
+4. 07:39:53KST에새실험중지,원본보존·진행작업마무리·최종MD·heartbeat비활성화. 현재시각은아직4시대로5시간완료아님.

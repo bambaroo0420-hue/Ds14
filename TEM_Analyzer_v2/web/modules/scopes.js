@@ -5,13 +5,22 @@ export function mountScopes(T,selection){
   $('maskSelectionCount').closest('details').after(panel);
   T.scopeId=()=>$('analysisScope').value==='selection'?$('maskScopeId').value.trim():null;
   T.exportOptions=()=>({scope_id:T.scopeId(),include_gt:$('exportPartialGT').checked});
+  const dialog=document.createElement('dialog');dialog.id='scopeCompareDialog';
+  dialog.innerHTML='<div class="dialog-heading"><h2>분석에 쓰는 선택 집합 전체</h2><button id="closeScopeCompare">닫기</button></div><p id="scopeCompareInfo"></p><img id="scopeCompareImage" style="max-width:100%;max-height:72vh" alt="분석 대상 선택 집합 전체"><p>초록색은 선택된 마스크들의 유효 target 합집합입니다. 미선택 영역은 unknown입니다. 기본 캔버스의 현재 후보 한 개 표시와 다릅니다.</p>';
+  document.body.append(dialog);$('closeScopeCompare').onclick=()=>dialog.close();
+  function showTarget(){
+    const key=T.scopeId(),s=T.state.mask_scopes?.[T.current]?.[key];if(!key||!s){T.say('현재 이미지에 저장된 선택 집합 모드가 필요합니다.');return}
+    $('scopeCompareInfo').textContent=`${T.state.images[T.current].name} · 집합 ${key} · mask ${s.candidate_ids.join(', ')} · 검수/정확도는 별도 확인 필요`;
+    $('scopeCompareImage').src=`/api/workflow/scopes/${T.current}/${encodeURIComponent(key)}.png?v=${T.state.revision}`;dialog.showModal();
+  }
   const mirrors=[];
   for(const page of ['measure','batch']){
     const box=document.createElement('div');box.className='scope-banner';
-    box.innerHTML=`<label>현재 분석 범위 <select id="scopeMode_${page}"><option value="layers">기존 레이어 사용</option><option value="selection">저장한 선택 마스크 집합 사용</option></select></label><p id="scopeNote_${page}"></p><button id="scopeEdit_${page}">SAM 화면에서 선택 집합 편집</button>`;
+    box.innerHTML=`<label>현재 분석 범위 <select id="scopeMode_${page}"><option value="layers">기존 레이어 사용</option><option value="selection">저장한 선택 마스크 집합 사용</option></select></label><p id="scopeNote_${page}"></p><button id="scopeShow_${page}">선택 집합 전체 크게 보기</button><button id="scopeEdit_${page}">SAM 화면에서 선택 집합 편집</button>`;
     $(page).querySelector('h2').after(box);mirrors.push(page);
     $(`scopeMode_${page}`).onchange=()=>{$('analysisScope').value=$(`scopeMode_${page}`).value;changed()};
     $(`scopeEdit_${page}`).onclick=()=>document.querySelector('[data-page="sam"]').click();
+    $(`scopeShow_${page}`).onclick=showTarget;
   }
   function changed(){render();window.dispatchEvent(new Event('tem:scope-changed'))}
   function render(){
@@ -21,7 +30,7 @@ export function mountScopes(T,selection){
     for(const page of mirrors){
       $(`scopeMode_${page}`).value=$('analysisScope').value;
       const total=Object.keys(T.state.images).length,ready=Object.keys(T.state.images).filter(i=>T.state.mask_scopes?.[i]?.[key]).length;
-      $(`scopeNote_${page}`).textContent=T.scopeId()?`선택 집합 ID: ${key} · 현재 이미지 ${s?'mask '+s.candidate_ids.join(', '):'집합 없음: 실행 시 실패'} · 프로젝트 ${ready}/${total}장에 저장됨. 미선택은 unknown이며 전체 물질 GT가 아닙니다.`:'레이어 기준입니다. 특정 마스크만 쓰려면 저장한 선택 집합으로 전환하세요.';
+      $(`scopeNote_${page}`).textContent=T.scopeId()?`선택 집합 ID: ${key} · 현재 이미지 ${s?'mask '+s.candidate_ids.join(', '):'집합 없음: 실행 시 실패'} · 프로젝트 ${ready}/${total}장에 저장됨. 미선택은 unknown입니다. 왼쪽 캔버스는 현재 후보 한 개일 수 있으므로 전체 선택은 크게 보기에서 확인하세요.`:'레이어 기준입니다. 특정 마스크만 쓰려면 저장한 선택 집합으로 전환하세요.';
     }
   }
   $('maskScopeId').onchange=changed;

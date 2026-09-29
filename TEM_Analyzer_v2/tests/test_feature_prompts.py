@@ -61,7 +61,7 @@ class FeatureApiTests(WorkflowTest):
     def test_preview_never_infers_or_saves_candidates(self):
         before=self.api.project.image(self.id).copy()
         with patch.object(self.api.model,'automatic',side_effect=AssertionError('inference')):
-            for method in ('kmeans','canny','sobel','scharr','hybrid'):
+            for method in ('kmeans','canny','sobel','scharr','hybrid','profile'):
                 r=self.client.post('/api/prompts/ml',json={'image_id':self.id,'method':method,'denoise':'median','preview':True})
                 self.assertEqual(r.status_code,200,r.text);self.assertFalse(r.json()['inference_run'])
         np.testing.assert_array_equal(before,self.api.project.image(self.id))
