@@ -311,3 +311,20 @@
 - GUI8890 PID7480/exec61768/stagingcwd/test-output/dual-axis-ui-v228/모델미로드. dualAxisTab228 id14handoff.증거evidence-v228/dual-axis-ui-viewport.png. fullPage캡처레이아웃비정상은도구출력반례로미사용,viewport정상.
 - 상세V228_REVIEW_KO.md,사용자의도일치표·장단점·후속우선순위FINAL_5H_REVIEW_KO.md,설치/모듈/데이터문서갱신.원본영상/모델/프로젝트/ZIP미게시.
 - 현재07:18KST,종료07:39:53까지약22분. 다음새모델실험보다배포/최종검토마무리. 종료뒤새실험시작금지/최종문서/heartbeat비활성화필수. production8876는아직v227프로세스(소스만v228)이며idle확인후교체예정.
+
+### 07:23 KST — v2.2.8 게시·사용자앱 적용·두 이미지 GUI 배치 완료
+
+- 코드commit `dfda5d42e076238059d89c6d87bd42282f8978c7`, tree `6ab08e422bfb4537f158f7d797ac83ef3d31ad15`, parent `206bde24f9e32cd7938a54eff948c4d0ee434ced`. 소스20개파일별읽기,tree일치,nonforce게시,fetch/update-ref후Git깨끗함. PR #1제목v228,main미병합. models/영상/ZIP미게시.
+- production8876 활성job0/모델null/정확CLI확인후본인PID28580만재시작. 새PID21888/exec63241/Desktopcwd/test-output/crop19-v22/project유지,HTTP200/version228/5images확인.기존19crop측정은stale로명시,재계산안함.사용자탭새로고침안함.
+- 추가실제GUI8890:일반클릭두번은마지막1개만선택,단독사각형job1/1완료. Ctrl+클릭으로2개선택표시확인후두께2/2→CD2/2. GT/SAM재실행0,레이어미배정target2개,미선택실제영상3개미실행.
+- 사각형scale1nm/px/두께20유효60/CD60유효20. SAM합성scale2nm/px/두께9.371997유효410/CD277.664386유효5(불안정반례).다른방향값유지확인.
+- 실제batchZIP797312bytes07:22:33KST다운로드.3042CSV행(사각형80+60/SAM1449+1453),4방향별JSON/GTfalse검증.상태완료2/2,JS오류없음/exportUndo11불변.증거evidence-v228/batch-two-images-dual-axis.png.위V228보고서추가.
+- 현재07:23KST,종료까지약17분. 더같은SAM/배치반복하지말고마지막실행상태·문서·소스무결성검토만남음. 종료07:39:53KST이후새실험금지,최종보고서마감시각갱신/예약tem-v2-5비활성화. 현재예약유지. 마감metadata는후속문서commit에포함예정.
+
+### 07:28 KST — 추가 안전 회귀 및 배포 문서 검수
+
+- 애플리케이션코드변경없음. test_measurement_axes에2개추가:부분GT+두축ZIP의레이어미배정/unknown/state/disk불변,잘못된두번째이미지전체400거절/busy409/state/disk불변. 개별9PASS2.961s.
+- Desktop최종142PythonPASS29.034초/Node5종PASS/pipcheckPASS. source manifest167개일치확인,README/docs의로컬MD링크24개누락0,staging/Desktop텍스트차이0(정규화LF). fullSuite140기록을지우지않고142최종별도기록.
+- 자동화설정파일/자동화view확인:tem-v2-5 ACTIVE,20분간격,target_thread_id현대화,기존prompt유지. OpenAI Docs skill로공식예약문서조회했으나구체heartbeat update규칙은현재tool계약과실제설정기준. 아직07:39:53전이므로비활성화안함.
+- 새SAM/OCR/GUI실험0. production8876 PID21888/session63241/5이미지유지,8890 GUI단독시험완료와다운로드증거는직전기록. 더반복시험불필요.
+- 다음heartbeat가종료이후이면즉시새실험없이마감:현재시각확인→최종MD의기준시각/종료기록추가→기존tem-v2-5설정보존하며status PAUSED→문서/manifest만Desktop동기화·기존branch/PR게시→최종링크/한계전달. 현재예정종료22:39:53UTC,20분주기상다음wake22:44전후일수있음. 종료전에는조용히유지,실험을시간채우기용으로재실행하지말것.

@@ -36,11 +36,21 @@
 
 화면 증거는 workspace `evidence-v228/dual-axis-ui-viewport.png`입니다. fullPage 캡처는 레이아웃이 비정상으로 나온 도구 캡처 반례라 증거로 쓰지 않았으며 실제 viewport는 정상입니다.
 
+### 추가 실제 GUI — 두 이미지, 두 방향 일괄
+
+07:22 KST, 같은 별도 프로젝트에서 생성45° SAM 영상과 제어 사각형을 Ctrl+클릭으로2개 선택했습니다. 처음 일반 클릭 두 번은 Windows 선택 규칙에 따라 마지막1개만 선택되어 사각형1장만 실행됐습니다. 화면의 `2개 선택`을 확인한 뒤 다음을 수행했습니다.
+
+- GT·SAM·회전 제안 없이 **계측만**: 시작0/끝자동/간격1로 두께2/2완료 → CD2/2완료. 다른 실제 영상3장은 실행하지 않았습니다.
+- 사각형 두께20nm/유효60, CD60nm/유효20. 생성 SAM은 시험2nm/px라 두께9.371997nm/유효410, CD277.664386nm/유효5이며 불안정한 CD 반례는 그대로입니다.
+- 실제 `대상 이미지 결과 ZIP` 클릭, Downloads/TEM_batch_results.zip797312bytes07:22:33저장. CSV는 사각형두께80/CD60 + SAM두께1449/CD1453 = **3042행**. 두 이미지 각각 두 방향JSON과 include_gt=false 확인.
+- JS오류 없음. export전후Undo11로동일. `evidence-v228/batch-two-images-dual-axis.png`에2/2완료 보존. 이 시험은 프로젝트 크기가 작은2장 배치이며 대용량 안정성 보증은 아닙니다.
+
 ## 회귀·수정 위치
 
 - 최초 전체139Python PASS30.305초, 이후 일괄 저장 검증 추가 포함 방향별7테스트 PASS2.749초. 최종 배포 전체검증은 ITERATION 기록을 참조하세요.
 - Node UI5종 PASS: 기본, prompt batch, loading, rotation compare, export axes. 모사 DOM 검증이며 위 실제 브라우저 검증과 구분합니다.
 - Desktop 최종 전체 **140Python PASS27.944초 / Node5종 PASS / pip check PASS**, source manifest167개. httpx testclient deprecation 경고는 기록하고 의존성을 무작정 교체하지 않았습니다.
+- 07:28 KST 마감 안전 검증: 부분GT+두방향 출력의 unknown·상태불변, 잘못된 두번째 이미지 전체거절, busy HTTP409 테스트2개 추가. **Desktop 최종142Python PASS29.034초 / Node5종 PASS / pip check PASS**. 애플리케이션 코드는 dfda5d4와 동일하고 테스트·문서만 보강했습니다. 앞140개 기록은 이전 실행 이력입니다.
 - 저장·호환: services/measurement.py, routes/workflow.py, storage.py.
 - 읽기 전용 출력: v2_api.py. UI: scopes.js, metrology.js, index.html, workflow.js.
 - tests/test_measurement_axes.py, tests/ui_export_axes.cjs, tools/validate_dual_axis_export.py.

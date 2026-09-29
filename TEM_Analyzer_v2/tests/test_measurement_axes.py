@@ -1,5 +1,6 @@
 import asyncio,copy,csv,io,json,unittest,zipfile
 import numpy as np
+from PIL import Image
 import test_workflow
 from tem_analyzer.storage import Project
 from tem_analyzer.services.scopes import save_scope
@@ -78,3 +79,26 @@ class MeasurementAxesTests(unittest.TestCase):
         asyncio.run(run())
         self.assertEqual({a:m['summary']['mean'] for a,m in p.state['measurements_by_axis'][self.id].items()},{'thickness':20,'cd':60})
         self.export()
+
+    def test_combined_partial_gt_is_read_only_and_unselected_unknown(self):
+        p,c=self.ready()
+        self.post('workflow/scopes/confirm',dict(image_id=self.id,scope_id='target'))
+        self.measure('thickness');self.measure('cd');before=copy.deepcopy(p.state);disk=p.path.read_bytes()
+        r=self.post('workflow/export',dict(image_ids=[self.id],scope_id='target',include_gt=True,export_all_axes=True))
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            labels=np.array(Image.open(io.BytesIO(z.read(self.id+'/partial_gt/labels.png'))))
+            mask=p.mask(self.id,c['id']);self.assertTrue(np.all(labels[mask]==1));self.assertTrue(np.all(labels[~mask]==65535))
+            self.assertEqual(set(json.loads(z.read('export_mode.json'))['measurement_axes'][self.id]),{'thickness','cd'})
+        self.assertIsNone(c['layer_id']);self.assertEqual(p.state,before);self.assertEqual(p.path.read_bytes(),disk)
+
+    def test_invalid_second_image_and_busy_do_not_return_partial_zip_or_mutate(self):
+        p,_=self.ready();self.measure('thickness');self.measure('cd');before=copy.deepcopy(p.state);disk=p.path.read_bytes()
+        body=dict(image_ids=[self.id,'missing-image'],scope_id='target',export_all_axes=True)
+        r=self.client.post('/api/workflow/export',json=body)
+        self.assertEqual(r.status_code,400);self.assertIn('application/json',r.headers['content-type'])
+        self.assertEqual(p.state,before);self.assertEqual(p.path.read_bytes(),disk)
+        p.busy_job=True
+        try:
+            r=self.client.post('/api/workflow/export',json={**body,'image_ids':[self.id]})
+            self.assertEqual(r.status_code,409);self.assertEqual(p.state,before);self.assertEqual(p.path.read_bytes(),disk)
+        finally:p.busy_job=False
