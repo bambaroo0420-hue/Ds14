@@ -22,7 +22,9 @@ vm.runInContext(fs.readFileSync(path.join(root,'web/app.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(root,'web/v2.js'),'utf8'),context);
 const run=s=>vm.runInContext(s,context);
 (async()=>{
- await new Promise(r=>setTimeout(r,70));
+ await run('initialReady');
+ // This suite exercises the legacy fixed-template controls explicitly enabled.
+ state.legacy_templates_enabled=true;
  elements.candidateSelect.value='1';await run('loadMask()');let rgba=run('tint.getContext("2d").getImageData(0,0,16,8).data');assert.equal(rgba[3],255);assert.equal(rgba[12*4+3],0,'mask background must be transparent');
  elements.candidateSelect.value='2';await elements.candidateSelect.onchange();rgba=run('tint.getContext("2d").getImageData(0,0,16,8).data');assert.equal(rgba[3],0);assert.equal(rgba[12*4+3],255,'candidate 2 must show different area');
  elements.candidateSelect.value='1';let slow=run('loadMask()');elements.candidateSelect.value='2';let fast=run('loadMask()');await Promise.all([slow,fast]);rgba=run('tint.getContext("2d").getImageData(0,0,16,8).data');assert.equal(rgba[3],0,'stale mask response must not replace current selection');

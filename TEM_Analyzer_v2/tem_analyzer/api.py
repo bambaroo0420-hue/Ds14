@@ -31,7 +31,7 @@ def png(a):
 def index():return FileResponse(WEB/'index.html')
 
 @app.get('/api/state')
-def state():return dict({k:v for k,v in project.state.items() if k not in ('history','future')},undo_count=len(project.state['history']),redo_count=len(project.state['future']),model=model.info,capabilities={'boundary':'available','measurement':'planned','sam':'available' if model.info else 'requires_model'})
+def state():return dict({k:v for k,v in project.state.items() if k not in ('history','future')},undo_count=len(project.state['history']),redo_count=len(project.state['future']),model=model.info,capabilities={'boundary':'available','measurement':'available','batch':'available','sam':'available' if model.info else 'requires_model'})
 
 @app.post('/api/images')
 async def upload(file:UploadFile=File(...)):
@@ -102,13 +102,13 @@ def scale_bar(body:ScaleBarIn):
 def scale_detect(body:ScaleAuto):
     try:
         im=project.image(body.image_id);tpl=effective_template(project,body.image_id)
-        if tpl.get('scale_roi') is None: raise ValueError('스케일 ROI를 드래그하여 저장한 뒤 OCR을 실행하세요.')
-        x0,y0,x1,y1=roi_pixels(tpl.get('scale_text_roi') or tpl['scale_roi'],im.shape[1],im.shape[0])
+        scan=tpl.get('scale_roi') if project.state.get('legacy_templates_enabled') else None
+        x0,y0,x1,y1=roi_pixels((tpl.get('scale_text_roi') or scan) if scan else [0,0,1,1],im.shape[1],im.shape[0])
         # EasyOCR is optional and configured for local weights, with download disabled.
         from .ocr import read_words
         words=read_words(im[y0:y1,x0:x1],body.ocr_dir,body.language)
         for word in words:word['box']=[word['box'][0]+x0,word['box'][1]+y0,word['box'][2]+x0,word['box'][3]+y0]
-        item=detect_scale(im,tpl['scale_roi'],words)
+        item=detect_scale(im,scan or [0,0,1,1],words)
         project.state['scale'][body.image_id]=item
         record=project.state.get('preprocessing',{}).get(body.image_id)
         if record is not None:record.update(reviewed=False,scale_requested=True,scale_status='proposed' if item.get('nm_per_px') else 'failed',last_error=None if item.get('nm_per_px') else 'OCR 실패: 수동 스케일을 저장하세요.')
@@ -394,6 +394,7 @@ class BatchPreprocess(BaseModel):
 
 @app.post('/api/preprocessing/apply')
 def batch_preprocess(body:BatchPreprocess):
+    if not project.state.get('legacy_templates_enabled',False):raise HTTPException(400,'기존 위치 템플릿이 꺼져 있습니다. OCR 자동 검출을 사용하거나 템플릿을 켜세요.')
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다. 완료 후 적용하세요.')
     try:
         ids=list(dict.fromkeys(body.image_ids if body.image_ids is not None else project.state['images']))
@@ -439,7 +440,7 @@ def preprocessing_preview(image_id:str,mode:str='overlay',thumbnail:bool=False):
         im=Image.fromarray(model_input(project,image_id) if mode=='processed' else original).convert('RGBA')
         if mode=='overlay':
             overlay=Image.new('RGBA',im.size,(0,0,0,0));draw=ImageDraw.Draw(overlay)
-            tpl=record.get('template')
+            tpl=effective_template(project,image_id)
             line=max(1,round(im.width/500))
             if tpl:
                 for roi in [tpl.get(k) for k in ('scale_roi','scale_text_roi','sample_roi','magnification_roi')]+tpl.get('text_rois',[]):
@@ -460,8 +461,11 @@ def clear_images():
     return delete_many(project,list(project.state['images']))
 
 from .v2_api import install,load_prior,save_prediction,delete_many
-install(app,project,model,model_lock)
+transaction_gate=install(app,project,model,model_lock)
 
 from .roi_review import ROIReviews
 roi_reviews=ROIReviews(project,model)
 roi_reviews.install(app,model_lock,lambda r:save_prediction(project,r['image_id'],r['item'],'roi-refine',r['parent'],r['prompts']))
+
+from .routes.workflow import install as install_workflow
+install_workflow(app,project,model,model_lock,transaction_gate)

@@ -7,10 +7,24 @@ from .calibration import bar_candidates
 
 DEFAULT_FILTER={'enabled':False,'method':'gaussian','sigma':1.,'range_sigma':.08,'contrast':1.}
 
+def exclusion_mask(project,iid):
+    from .labels import unpack
+    info=project.state['images'][iid];shape=(info['height'],info['width'])
+    return excluded(shape,effective_template(project,iid))|unpack(project.state.get('annotations',{}).get(iid,{}).get('exclude'),shape)
+
 def effective_template(project,iid):
     project.require_image(iid)
     record=project.state.get('preprocessing',{}).get(iid,{})
-    return record.get('template') or {'scale_roi':None,'text_rois':[]}
+    # OCR regions and legacy fixed-position templates are independent inputs.
+    auto=record.get('auto_regions') or {'scale_roi':None,'text_rois':[]}
+    if not project.state.get('legacy_templates_enabled',False):return deepcopy(auto)
+    legacy=record.get('template') or {}
+    result=deepcopy(legacy)
+    result['text_rois']=list(result.get('text_rois',[]))+list(auto.get('text_rois',[]))
+    if auto.get('scale_roi'):
+        if result.get('scale_roi'):result['text_rois'].append(result['scale_roi'])
+        result['scale_roi']=auto['scale_roi']
+    return result
 
 def filtered(image,cfg):
     cfg=DEFAULT_FILTER|dict(cfg or {});sigma=float(cfg['sigma']);contrast=float(cfg['contrast'])
@@ -34,7 +48,7 @@ def filtered(image,cfg):
 
 def model_input(project,iid,branch='sam'):
     image=project.image(iid);record=project.state.get('preprocessing',{}).get(iid,{})
-    ex=excluded(image.shape[:2],effective_template(project,iid))
+    ex=exclusion_mask(project,iid)
     if ex.all():raise ValueError('분석할 유효 영역이 없습니다.')
     if ex.any():
         idx=ndi.distance_transform_edt(ex,return_distances=False,return_indices=True)
@@ -42,9 +56,10 @@ def model_input(project,iid,branch='sam'):
     return filtered(image,record.get(branch+'_filter',DEFAULT_FILTER))
 
 def restrict_mask(project,iid,mask):
-    m=np.asarray(mask,bool).copy();m[excluded(m.shape,effective_template(project,iid))]=False;return m
+    m=np.asarray(mask,bool).copy();m[exclusion_mask(project,iid)]=False;return m
 
 def apply_one(project,iid,template,regions,scale,length,unit):
+    if not project.state.get('legacy_templates_enabled',False):raise ValueError('기존 위치 템플릿이 비활성화되어 있습니다. OCR 자동 검출을 사용하거나 템플릿을 켜세요.')
     image=project.image(iid);record=deepcopy(project.state['preprocessing'].get(iid,{}))
     record.update(reviewed=False,scale_requested=scale,last_error=None)
     if regions:record['template']=deepcopy(template);record['excluded_pixels']=int(excluded(image.shape[:2],template).sum())

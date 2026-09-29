@@ -82,8 +82,12 @@ def install(app,project,model,model_lock):
     @app.middleware('http')
     async def transaction(request:Request,call_next):
         if not request.url.path.startswith('/api/'):return await call_next(request)
+        if request.url.path.startswith('/api/workflow/jobs'):return await call_next(request)
+        if getattr(project,'busy_job',False) and request.method in ('POST','DELETE','PUT','PATCH'):
+            return JSONResponse({'detail':'일괄 작업 중입니다. 취소 또는 완료 후 편집하세요.'},status_code=409)
         async with gate:
             path=request.url.path;mutating=request.method in ('POST','DELETE','PUT','PATCH')
+            if getattr(project,'busy_job',False) and mutating:return JSONResponse({'detail':'일괄 작업 중에는 편집할 수 없습니다.'},status_code=409)
             transactional=mutating and not (path.startswith('/api/images') or path in ('/api/model/load','/api/v2/delete','/api/v2/undo','/api/v2/redo') or path.startswith('/api/prompts/') or path.startswith('/api/v2/boundary/preview') or path.startswith('/api/v2/evaluate') or path.startswith('/api/v2/boundary/cancel'))
             before=copy.deepcopy(project.state) if transactional else None;start=time.perf_counter()
             body={}
@@ -176,7 +180,8 @@ def install(app,project,model,model_lock):
         for iid in ids:
             try:
                 im=project.image(iid);tpl=effective_template(project,iid);roi=tpl.get('scale_roi')
-                if not roi:raise ValueError('스케일바 ROI가 없습니다.')
+                if not project.state.get('legacy_templates_enabled'):tpl={};roi=None
+                roi=roi or [0,0,1,1]
                 words=[];ocr_error=None
                 for r in [tpl.get('scale_text_roi') or roi]:
                     x0,y0,x1,y1=roi_pixels(r,im.shape[1],im.shape[0])
@@ -254,3 +259,5 @@ def install(app,project,model,model_lock):
         previews.clear();return {'created':created,'changed_pixels':p['changed']}
     @app.post('/api/v2/boundary/cancel')
     def boundary_cancel(body:dict):previews.pop(body.get('token'),None);return {'ok':True}
+
+    return gate

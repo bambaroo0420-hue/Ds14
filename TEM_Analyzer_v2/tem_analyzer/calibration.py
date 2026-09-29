@@ -24,14 +24,28 @@ def bar_candidates(image, roi):
                 continue
             sy, sx = region
             width, height = sx.stop-sx.start, sy.stop-sy.start
-            fill = float((labels[region] == label).mean())
-            if width < 8 or width < 5*height or height > max(12, gray.shape[0]*.15) or fill < .8:
+            if width < 8 or width < 2*height:
                 continue
             if sx.start == 0 and sx.stop == gray.shape[1]:
                 continue
-            y = y0 + (sy.start+sy.stop-1)/2
-            # Edges bound the occupied pixel intervals, so a 100-pixel bar is 100 px.
-            bar = [[float(x0+sx.start), float(y)], [float(x0+sx.stop), float(y)]]
-            result.append(dict(bar=bar, pixel_length=width, polarity=polarity, fill=fill))
+            ys,xs=np.nonzero(labels[region]==label)
+            pts=np.column_stack([xs,ys]).astype(float);center=pts.mean(axis=0)
+            eig,vec=np.linalg.eigh(np.cov(pts.T));axis=vec[:,-1]
+            if axis[0]<0:axis=-axis
+            if abs(np.degrees(np.arctan2(axis[1],axis[0])))>20:continue
+            normal=np.array([-axis[1],axis[0]]);along=(pts-center)@axis;across=(pts-center)@normal
+            length=float(np.ptp(along)+np.abs(axis).sum())
+            thickness=float(np.ptp(across)+np.abs(normal).sum())
+            fill=float(len(pts)/(length*thickness))
+            if length<5*thickness or thickness>max(12,gray.shape[0]*.04) or fill<.55:continue
+            center+=np.array([x0+sx.start,y0+sy.start])
+            # Horizontal bounds retain the original pixel-interval convention.
+            if abs(axis[1])<1e-8:
+                bar=[[float(x0+sx.start),float(center[1])],[float(x0+sx.stop),float(center[1])]];length=float(width)
+            else:
+                bar=[(center+axis*(float(along.min())-.5)).tolist(),(center+axis*(float(along.max())+.5)).tolist()]
+                length=float(np.linalg.norm(np.array(bar[1])-bar[0]))
+            result.append(dict(bar=bar,pixel_length=length,polarity=polarity,fill=fill,
+                               box=[float(x0+sx.start),float(y0+sy.start),float(x0+sx.stop),float(y0+sy.stop)]))
     return sorted(result, key=lambda c: c['pixel_length']*c['fill'], reverse=True)[:20]
 

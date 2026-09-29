@@ -30,12 +30,13 @@ class Project:
         else:
             self.state=dict(schema_version=2,images={},templates={'default':copy.deepcopy(DEFAULT_TEMPLATE)},selected_template='default',layers=[dict(id=1,name='Layer 1',color='#28dc82',locked=False)],candidates={},next_candidate=1,scale={})
         for key,default in [('preprocessing',{}),('prepared_prompts',{}),('runs',[]),('history',[]),('future',[]),('revision',0),('protected',{}),('annotations',{})]:self.state.setdefault(key,default)
+        self.state.setdefault('legacy_templates_enabled',False)
         for iid,items in self.state['candidates'].items():
             for c in items:c.setdefault('active',True);c.setdefault('deleted',False)
             self.state['preprocessing'].setdefault(iid,{'template':copy.deepcopy(self.state['templates'][self.state['selected_template']]),'reviewed':False})
         self.recover_deletions();self.save()
     def save(self):atomic_json(self.path,self.state)
-    def snapshot(self):return copy.deepcopy({k:v for k,v in self.state.items() if k not in ('history','future','runs')})
+    def snapshot(self):return copy.deepcopy({k:v for k,v in self.state.items() if k not in ('history','future','runs','jobs')})
     def checkpoint(self,action):
         self.state['history'].append({'action':action,'state':self.snapshot()});self.state['history']=self.state['history'][-20:];self.state['future']=[]
         self.state['revision']+=1
@@ -43,7 +44,7 @@ class Project:
         src='future' if redo else 'history';dst='history' if redo else 'future'
         if not self.state[src]:raise ValueError('되돌릴 작업이 없습니다.')
         before=self.snapshot();entry=self.state[src].pop();self.state[dst].append({'action':entry['action'],'state':before})
-        keep={k:self.state[k] for k in ('history','future','runs')};next_id=self.state['next_candidate'];revision=self.state['revision']+1
+        keep={k:self.state[k] for k in ('history','future','runs','jobs') if k in self.state};next_id=self.state['next_candidate'];revision=self.state['revision']+1
         self.state=entry['state'];self.state.update(keep,next_candidate=max(next_id,self.state['next_candidate']),revision=revision);self.save()
         return {'action':entry['action'],'revision':revision}
     def add_image(self,data,name):
@@ -74,18 +75,37 @@ class Project:
         paths=[self.root/'images'/f'{iid}.png']
         for folder in ('masks','logits'):paths+=list((self.root/folder).glob(f'{iid}_*'))
         paths=[p for p in paths if p.exists()];trash=self.root/'trash'/uuid.uuid4().hex;trash.mkdir()
-        atomic_json(trash/'journal.json',{'image_id':iid,'files':[str(p.relative_to(self.root)) for p in paths]})
+        metadata={k:copy.deepcopy(self.state.get(k,{}).get(iid)) for k in ('images','candidates','scale','preprocessing','prepared_prompts','protected','annotations','alignments','measurements','annotation_proposals','gt_reviews')}
+        atomic_json(trash/'journal.json',{'image_id':iid,'files':[str(p.relative_to(self.root)) for p in paths],'metadata':metadata,'created':time.time()})
         moved=[]
         try:
             for p in paths:
                 dst=trash/p.relative_to(self.root);dst.parent.mkdir(parents=True,exist_ok=True);os.replace(p,dst);moved.append((p,dst))
-            for key in ('images','candidates','scale','preprocessing','prepared_prompts','protected','annotations'):self.state.get(key,{}).pop(iid,None)
+            for key in metadata:self.state.get(key,{}).pop(iid,None)
             self.state['history']=[];self.state['future']=[];self.state['revision']+=1;self.save()
         except Exception:
             self.state=before
             for p,dst in reversed(moved):
                 if dst.exists():os.replace(dst,p)
             raise
+    def restore_deleted(self,trash_id):
+        if not str(trash_id).isalnum():raise ValueError('잘못된 휴지통 ID')
+        folder=self.root/'trash'/trash_id
+        info=json.loads((folder/'journal.json').read_text(encoding='utf8'))
+        iid=info['image_id']
+        if iid in self.state['images']:raise ValueError('이미 복원한 이미지입니다.')
+        if not info.get('metadata'):raise ValueError('구버전 휴지통은 수동 복원이 필요합니다.')
+        for rel in info['files']:
+            src=(folder/rel).resolve();dst=(self.root/rel).resolve()
+            if not src.is_relative_to(folder.resolve()) or not dst.is_relative_to(self.root):raise ValueError('휴지통 경로 오류')
+            if not src.is_file() or dst.exists():raise ValueError('복원 파일 누락 또는 대상 충돌')
+        # Copy first, then atomically publish metadata; trash remains a recovery source.
+        for rel in info['files']:shutil.copy2(folder/rel,self.root/rel)
+        for key,value in info['metadata'].items():
+            if value is not None:self.state.setdefault(key,{})[iid]=value
+        self.state['history']=[];self.state['future']=[];self.state['revision']+=1;self.save()
+        (folder/'journal.json').unlink()
+        return iid
     def mask_path(self,iid,cid):
         self.require_image(iid)
         if not str(cid).isdigit():raise ValueError('잘못된 후보 ID')

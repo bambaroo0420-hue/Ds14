@@ -8,7 +8,9 @@ from tem_analyzer.preprocessing import model_input
 
 
 class BatchPreprocessingTest(unittest.TestCase):
-    setUp=test_workflow.WorkflowTest.setUp
+    def setUp(self):
+        test_workflow.WorkflowTest.setUp(self)
+        self.api.project.state['legacy_templates_enabled']=True
     tearDown=test_workflow.WorkflowTest.tearDown
 
     def add_bar(self,width):

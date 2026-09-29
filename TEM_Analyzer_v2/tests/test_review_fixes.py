@@ -11,6 +11,7 @@ class ReviewFixes(unittest.TestCase):
             r=self.client.post('/api/layers',json=body);self.assertEqual(r.status_code,200,r.text);self.assertEqual(r.json()['name'],name)
         self.assertEqual([x['name'] for x in self.api.project.state['layers']],['Layer 1','Layer 2','Layer 3','MgO'])
     def apply_regions(self):
+        self.api.project.state['legacy_templates_enabled']=True
         r=self.client.post('/api/preprocessing/apply',json={'image_ids':[self.id],'template':{'id':'fix','name':'fix','scale_roi':None,'text_rois':[[0,0,.5,.5]]},'apply_regions':True,'apply_scale':False})
         self.assertEqual(r.status_code,200,r.text)
     def test_excluded_points_filtered_before_inference_and_masks_clipped(self):
