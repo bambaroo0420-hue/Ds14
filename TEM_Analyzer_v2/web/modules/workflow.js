@@ -1,9 +1,9 @@
-import {mountSelection} from './selection.js?v=2.2.7';
-import {mountMetrology} from './metrology.js?v=2.2.7';
-import {mountBatch} from './batch.js?v=2.2.7';
-import {mountScopes} from './scopes.js?v=2.2.7';
-import {mountPromptTransfer} from './prompt_transfer.js?v=2.2.7';
-import {mountPromptBatch} from './prompt_batch.js?v=2.2.7';
+import {mountSelection} from './selection.js?v=2.2.8';
+import {mountMetrology} from './metrology.js?v=2.2.8';
+import {mountBatch} from './batch.js?v=2.2.8';
+import {mountScopes} from './scopes.js?v=2.2.8';
+import {mountPromptTransfer} from './prompt_transfer.js?v=2.2.8';
+import {mountPromptBatch} from './prompt_batch.js?v=2.2.8';
 const T=window.TEM,$=id=>document.getElementById(id);let boundaryToken=null,boundaryImage=null;
 const selections=mountSelection(T),scopes=mountScopes(T,selections),metrology=mountMetrology(T),batch=mountBatch(T,metrology);
 const promptTransfer=mountPromptTransfer(T);

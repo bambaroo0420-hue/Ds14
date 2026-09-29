@@ -69,6 +69,11 @@ v2.2.3 프롬프트 검수 gate 모사 테스트는 `node tests/ui_prompt_batch.
 
 ## 수정 시 주의
 
+v2.2.8: `python -B -m unittest discover -s tests -p test_measurement_axes.py`, `node tests/ui_export_axes.cjs`.
+`tools/validate_dual_axis_export.py --project <batch-recovery-v227/project> --output <새 폴더>`는 저장된 실제 SAM 마스크를 복사해 두 방향 출력/만료/좌표 왕복을 검사합니다.
+이 도구는 synthetic 이름의 생성 영상에 시험용 1→2nm/px를 부여하고 정확한 20×60px 도형을 추가합니다. 회사 프로젝트에는 사용하지 마세요.
+원본 파일 hash 보존, GUI에서 두께→CD→함께 ZIP→CSV6행을 별도로 확인합니다. 원래 SAM 재추론을 하지 않습니다.
+
 v2.2.7: `python -B -m unittest discover -s tests -p test_rotation_comparison.py`, `node tests/ui_rotation_compare.cjs`.
 실제 저장 mask 기준 비교: `tools/compare_rotation_references.py --project <기존 프로젝트> --output <새 폴더>`.
 일괄 실패격리/재시도: `tools/validate_batch_recovery.py --project <비교 후 프로젝트> --output <새 폴더>`; 생성 이름 synthetic 영상과 target 집합이 있는 검증 fixture 전용입니다.

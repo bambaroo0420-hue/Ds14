@@ -1,4 +1,4 @@
-import {mountRotationComparison} from './rotation_compare.js?v=2.2.7';
+import {mountRotationComparison} from './rotation_compare.js?v=2.2.8';
 // Decode off-screen first so a comparison is never presented as ready while
 // its image is still loading. This does not repair an incorrect server image.
 export function prepareComparisonImage(url,label,timeoutMs=15000){
@@ -20,6 +20,7 @@ export function mountMetrology(T) {
   sampling.innerHTML='<summary>계측 표본·품질 기준 (일괄 처리에도 동일 적용)</summary><label>표본 구간 <select id="measureSampling"><option value="all">지정 좌표 전체 (기존 방식)</option><option value="component_center">각 연결 객체의 중앙 구간</option></select></label><label>중앙 구간 비율 (%) <input id="measureCenter" type="number" min="1" max="100" value="60"></label><label>최소 구간 길이 (px, 0: 제한 없음) <input id="measureMinimum" type="number" min="0" value="0" step="0.1"></label><label class="inline-check"><input id="measureSingle" type="checkbox">동일 객체에서 다중 교차하는 위치 제외</label><label class="inline-check"><input id="measureFrame" type="checkbox">원본 프레임에 닿는 끝점 제외</label><p>중앙 구간은 회전 후 각 연결 객체의 투영 폭/높이에 적용됩니다. 물질 구분이나 두께 정답을 추정하지 않습니다. 제외된 행과 원시 길이는 ZIP에 보존하며 평균에는 포함하지 않습니다.</p>';
   $('runMeasure').before(sampling);
   const residual=r=>r.fit.residual_px==null?'해당 없음 (영상 방향)':r.fit.residual_px.toFixed(2)+' px';
+  const axisInfo=document.createElement('p');axisInfo.id='measurementAxesInfo';$('measurementInfo').after(axisInfo);
   $('runMeasure').textContent='현재 레이어로 계측 (GT 불필요)';$('downloadResults').textContent='회전 · 좌표 변환 · 계측 ZIP (GT 별도)';
   const compare=document.createElement('button');compare.id='openAlignmentCompare';compare.textContent='원본 · 회전 결과 크게 비교';$('alignedPreview').after(compare);
   const dialog=document.createElement('dialog');dialog.id='alignmentCompare';
@@ -52,12 +53,15 @@ export function mountMetrology(T) {
   function render(){
     for(const id of ['rotationLayer','measureLayer']){const old=$(id).value;$(id).innerHTML=T.state.layers.map(l=>`<option value="${l.id}">${T.escape(l.name)}</option>`).join('');if(T.state.layers.some(l=>String(l.id)===old))$(id).value=old}
     $('measureRows').innerHTML='';$('rotationInfo').textContent='기준 레이어를 선택해 회전각을 제안하세요.';
+    $('measurementAxesInfo').textContent='두께와 CD는 방향을 바꾸어 각각 실행하세요. 각 방향의 최신 결과를 별도로 보존합니다. 여러 측정 구간의 이력 저장은 아닙니다.';
     $('measurementInfo').textContent=`${T.scopeId()?'선택 마스크 집합 '+T.scopeId():'레이어'} → 회전·스케일 확인 후 계측. 경계 보정·GT 확정은 선택 사항입니다. 미검수 마스크 결과는 잠정값입니다.`;
     $('runMeasure').textContent=T.scopeId()?'선택 마스크로 계측 (레이어·GT 불필요)':'현재 레이어로 계측 (GT 불필요)';
     $('rotationLayer').disabled=$('measureLayer').disabled=!!T.scopeId();
     $('alignedPreview').removeAttribute('src');
     if(T.current){const iid=T.current;T.api(`workflow/status/${iid}`,null,'GET').then(r=>{
       if(iid!==T.current)return;
+      const axes=r.measurement_axes||{};
+      $('measurementAxesInfo').textContent='방향별 저장: '+['thickness','cd'].map(a=>(a==='thickness'?'두께':'CD')+' '+(axes[a]?(axes[a].stale?'만료 · 재계측 필요':'현재 입력과 일치')+` (${axes[a].summary.count} 유효 표본)`:'미측정')).join(' / ')+'. 아래 표는 가장 최근 실행 결과입니다. 두 방향 함께 출력 시 만료 결과는 차단합니다.';
       if(r.rotation){$('rotationInfo').textContent=`각도 ${r.rotation.transform.angle_deg.toFixed(4)}° · 잔차 ${residual(r.rotation)} · ${r.rotation_stale?'입력 변경: 재계산':r.rotation.confirmed?'확정':'검토 필요'} ${(r.rotation.warnings||[]).join(' ')}`;
         if(!r.rotation_stale)$('alignedPreview').src=`/api/workflow/rotation/${iid}.png?v=${T.state.revision}`;}
       if(r.measurement){$('measurementInfo').textContent=(r.measurement_stale?'만료된 결과: 다시 측정하세요. ':'')+(r.measurement.review_status==='provisional_unreviewed_masks'?'미검수 마스크의 잠정 계측값 · ':'검수 마스크 · ')+savedDescription(r.measurement)+' '+(r.measurement.warnings||[]).join(' ');showRows(r.measurement)}

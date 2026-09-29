@@ -125,6 +125,21 @@ def measurement_hash(project,iid):
     return hashlib.sha256(json.dumps(data,sort_keys=True).encode()).hexdigest()
 
 
+def stored_measurements(project,iid):
+    """Latest result per axis, with a read-only fallback for pre-v2.2.8 projects."""
+    values=dict(project.state.get('measurements_by_axis',{}).get(iid,{}))
+    latest=project.state.get('measurements',{}).get(iid)
+    if latest:values[latest['axis']]=latest
+    return values
+
+
+def save_measurement(project,iid,value):
+    values=stored_measurements(project,iid);values[value['axis']]=copy.deepcopy(value)
+    project.state.setdefault('measurements_by_axis',{})[iid]=values
+    project.state['measurements'][iid]=value
+    return value
+
+
 def run_measurement(project,iid,config):
     rot=alignment_current(project,iid)
     if not rot.get('confirmed'):raise ValueError('회전 결과를 먼저 확인·확정하세요.')

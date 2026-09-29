@@ -75,7 +75,7 @@ class Project:
         paths=[self.root/'images'/f'{iid}.png']
         for folder in ('masks','logits'):paths+=list((self.root/folder).glob(f'{iid}_*'))
         paths=[p for p in paths if p.exists()];trash=self.root/'trash'/uuid.uuid4().hex;trash.mkdir()
-        metadata={k:copy.deepcopy(self.state.get(k,{}).get(iid)) for k in ('images','candidates','scale','preprocessing','prepared_prompts','protected','annotations','alignments','measurements','annotation_proposals','gt_reviews','mask_scopes','prompt_transfers')}
+        metadata={k:copy.deepcopy(self.state.get(k,{}).get(iid)) for k in ('images','candidates','scale','preprocessing','prepared_prompts','protected','annotations','alignments','measurements','measurements_by_axis','annotation_proposals','gt_reviews','mask_scopes','prompt_transfers')}
         atomic_json(trash/'journal.json',{'image_id':iid,'files':[str(p.relative_to(self.root)) for p in paths],'metadata':metadata,'created':time.time()})
         moved=[]
         try:

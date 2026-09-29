@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from ..algorithms.annotations import propose_annotations
 from ..algorithms.metrology import warp
 from ..services.layers import active, unions, fingerprint, inspect_conflicts, propose_boundaries, apply_boundaries, transfer_layers
-from ..services.measurement import alignment, alignment_current, run_measurement, measurement_hash, compare_alignment
+from ..services.measurement import alignment, alignment_current, run_measurement, measurement_hash, compare_alignment, stored_measurements, save_measurement
 from ..services.scopes import save_scope, confirm_scope, require_scope_review, scope_arrays
 from ..services.prompt_transfer import save_preset, preview_preset
 from ..services.prompt_batches import prepare_transfer,run_transferred
@@ -107,7 +107,7 @@ def install(app,project,model,model_lock,gate):
             return {'angle_deg':value['transform']['angle_deg'],'residual_px':value['fit']['residual_px'],
                     'needs_review':True,'warnings':value['warnings'],'confirmed':False}
         if stage=='measurement':
-            value=run_measurement(project,iid,settings.get('measurement',{}));project.state['measurements'][iid]=value
+            value=run_measurement(project,iid,settings.get('measurement',{}));save_measurement(project,iid,value)
             return value['summary']
         if stage=='gt':
             review=require_gt(iid,settings.get('scope_id'));project.state['gt_reviews'][iid]=review
@@ -121,6 +121,7 @@ def install(app,project,model,model_lock,gate):
     def status(iid:str):
         project.require_image(iid);rot=project.state['alignments'].get(iid);met=project.state['measurements'].get(iid)
         return dict(rotation=rot,measurement=met,rotation_stale=bool(rot and rot['input_hash']!=fingerprint(project,iid)),
+                    measurement_axes={axis:dict(summary=m['summary'],scope_id=m.get('scope_id'),layer_id=m.get('layer_id'),config=m['config'],stale=m['input_hash']!=measurement_hash(project,iid)) for axis,m in stored_measurements(project,iid).items()},
                     measurement_stale=bool(met and met['input_hash']!=measurement_hash(project,iid)),conflicts=inspect_conflicts(project,iid))
 
     @app.post('/api/workflow/annotations/detect')
@@ -273,14 +274,15 @@ def install(app,project,model,model_lock,gate):
 
     @app.post('/api/workflow/measurement')
     def measurement(body:dict):
-        iid=body['image_id'];value=run_measurement(project,iid,body['config']);project.state['measurements'][iid]=value;return value
+        iid=body['image_id'];value=run_measurement(project,iid,body['config']);return save_measurement(project,iid,value)
 
     @app.post('/api/workflow/gt/confirm')
     def gt_confirm(body:dict):
         iid=body['image_id'];review=require_gt(iid,body.get('scope_id'));project.state['gt_reviews'][iid]=review;return review
 
-    def result_zip(ids,include_gt=False,scope_id=None):
+    def result_zip(ids,include_gt=False,scope_id=None,export_all_axes=False):
         output=io.BytesIO();csvbuf=io.StringIO();writer=csv.writer(csvbuf)
+        exports={}
         writer.writerow(['image_id','image_name','layer_id','scope_id','axis','position_px','segment','status','length_px','length_nm','review_status','component_id','raw_length_nm','quality_flags','exclusion_reasons','valid_coverage_px','invalid_coverage_px'])
         # Validate every item before producing any successful-looking partial export.
         for iid in ids:
@@ -289,11 +291,14 @@ def install(app,project,model,model_lock,gate):
             if include_gt:require_gt(iid,scope_id)
             if not include_gt and not project.state['alignments'].get(iid):raise ValueError('먼저 회전 결과를 생성하세요. GT는 별도 내보내기입니다.')
             if project.state['alignments'].get(iid):alignment_current(project,iid)
-            met=project.state['measurements'].get(iid)
-            if met and met.get('scope_id')!=scope_id:raise ValueError('계측 결과의 선택 범위와 출력 범위가 다릅니다. 같은 범위로 다시 측정하거나 출력하세요.')
-            if met and met['input_hash']!=measurement_hash(project,iid):raise ValueError('만료된 계측 결과가 있습니다. 다시 측정하세요.')
+            latest=project.state['measurements'].get(iid)
+            values=stored_measurements(project,iid) if export_all_axes else ({latest['axis']:latest} if latest else {})
+            exports[iid]=values
+            for axis,met in values.items():
+                if met.get('scope_id')!=scope_id:raise ValueError(f'{axis}: 계측 결과의 선택 범위와 출력 범위가 다릅니다. 같은 범위로 다시 측정하거나 두 방향 함께 내보내기를 끄고 최신 결과만 출력하세요.')
+                if met['input_hash']!=measurement_hash(project,iid):raise ValueError(f'{axis}: 만료된 계측 결과가 있습니다. 다시 측정하거나 두 방향 함께 내보내기를 끄고 유효한 최신 결과만 출력하세요.')
         with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as z:
-            z.writestr('export_mode.json',json.dumps({'include_gt':include_gt,'scope_id':scope_id,'partial_binary_target':bool(scope_id),'note':'Selected scope label 1 is a binary target union, not a semantic material class. Unselected is UNKNOWN, never background. Provisional measurements retain review_status.'}))
+            z.writestr('export_mode.json',json.dumps({'include_gt':include_gt,'scope_id':scope_id,'export_all_axes':export_all_axes,'measurement_axes':{iid:list(values) for iid,values in exports.items()},'partial_binary_target':bool(scope_id),'note':'Latest result per stored axis, not all historical intervals. measurement.json is latest for compatibility. Selected scope label 1 is a binary target union, not a semantic material class. Unselected is UNKNOWN, never background. Provisional measurements retain review_status.'}))
             for iid in ids:
                 if include_gt:
                     if scope_id:
@@ -313,6 +318,8 @@ def install(app,project,model,model_lock,gate):
                     z.writestr(iid+'/alignment.json',json.dumps(rot,ensure_ascii=False,indent=2))
                 if met:
                     z.writestr(iid+'/measurement.json',json.dumps(met,ensure_ascii=False,indent=2))
+                for axis,met in exports[iid].items():
+                    z.writestr(iid+'/measurements/'+axis+'.json',json.dumps(met,ensure_ascii=False,indent=2))
                     for row in met['rows']:
                         name=project.state['images'][iid]['name']
                         if name.startswith(('=','+','-','@')):name="'"+name
@@ -324,7 +331,9 @@ def install(app,project,model,model_lock,gate):
     def export(body:dict):
         ids=body.get('image_ids') or list(project.state['images'])
         if not ids:raise ValueError('출력할 이미지가 없습니다.')
-        return result_zip(ids,bool(body.get('include_gt',False)),body.get('scope_id'))
+        both=body.get('export_all_axes',False)
+        if type(both) is not bool:raise ValueError('export_all_axes는 true/false입니다.')
+        return result_zip(ids,bool(body.get('include_gt',False)),body.get('scope_id'),both)
 
     @app.get('/api/workflow/trash')
     def trash():

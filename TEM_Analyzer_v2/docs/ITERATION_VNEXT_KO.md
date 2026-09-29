@@ -282,3 +282,32 @@
 1. 후보방향합의와측정정확도분리유지. 첨부분절/누출미해결로자동GT완료주장금지. 독립ROI일괄레시피여전히미지원.
 2. 종료까지약1시간남음. 전체사용자의도차이/설치·모듈문서·최종하나의종합보고서 준비,남은시간내확실히마칠수있는검증만수행.
 3. 종료07:39:53KST(22:39:53UTC)후새실험금지. 진행작업안전마무리/최종MD/heartbeat tem-v2-5비활성화필수. 현재06:39로예약유지.
+
+### 06:43 KST — v2.2.7 게시·실행 적용 완료 / 사용자 상태 질문
+
+- 기존branch/PR #1 commit `206bde24f9e32cd7938a54eff948c4d0ee434ced`, tree `c9816257f8ef0bb466563770757b505f4058626a`, parent `0bc0e2076a9fb659c376658ae7a19b047cab1eb4`. 소스23개개별읽기/tree일치/nonforce게시,fetch/update-ref후Git깨끗함. main미병합.
+- Desktop133PASS26.000초/Node4종PASS/pipcheckPASS/manifest162. 상세V227_REVIEW_KO.md. 원본·모델·프로젝트결과미게시.
+- 사용자'현재 상태 알려줘'에중간현황응답. 07:39:53까지약57분남음,작업중단/예약변경요청아님. heartbeat tem-v2-5유지.
+- 사용자앱8876 모델미로드/활성작업0/정확한CLI확인후본인PID22308재시작. 새PID28580/exec43957, Desktopcwd/test-output/crop19-v22/project그대로. HTTP200/v227/comparisonAPI/영상5장확인. 사용자탭새로고침안함.
+- GUI8889 최종PID30256/exec94208 모델미로드, test-output/rotation-ui-v227. rotationTab227 id13handoff. 최종표증거evidence-v227/rotation-methods-final.png,입력점보조회전은point-direction-unconfirmed.png,실패격리는batch-skipped-retry.png.
+- 다음반복은사용자요구일치도최종표/종합보고서준비 및 남은안전검증. 78SAM/40방향동일반복금지. 시간종료07:39:53이후새실험금지/heartbeat비활성화필수. 마지막게시메타데이터는staging기록이며다음게시때포함한다.
+
+### 06:50 KST 전후 — v2.2.8 작업 중 / 기준점 사용자 질문
+
+- 저장/출력검토에서두께후CD실행시최신measurements가덮여ZIP에CD만남는사용자목표차이발견. staging에방향별최신2슬롯measurements_by_axis+legacy최신유지,단일/일괄공통save_measurement추가.
+- 저장방향상태API,UI두께/CD보유·만료표시,4/5화면두방향함께내보내기체크동기화(기본on). API기본export_all_axes=false하위호환. true면두방향범위/입력hash검사후CSV+measurements/thickness.json,cd.json. measurement.json최신호환유지. stale다른축무시하지않고전체차단;최신만옵션off가능.
+- export를transactioncheckpoint대상에서제외해읽기만으로revision/Undo증가안함. measurements_by_axis삭제복원journal포함.
+- 새test_measurement_axes.py6PASS2.161초:20px두께/60pxCD보존·CSV·stale다른축차단·legacy·Undo/Redo·삭제복원·exportstate불변. 아직전체회귀/실제GUI/버전업/문서/동기화/게시미완료. production8876/Desktop은v227그대로.
+- 사용자가'회전·계측기준점을어떻게해야일관되나'질문하여개념과현재구현설명응답. 작업중단요청아님. 다음turn이작업이어갈때v228pending부터완료할것. 새컴퓨터사용skill은이번turn아직읽지않았으므로GUI전읽기필요.
+
+### 07:18 KST — v2.2.8 두께·CD 보존 검증, 게시 준비
+
+- 두방향 저장/출력/legacy호환/Undo·Redo·삭제복원/일괄저장 완성. exports는checkpoint제외/gate유지로state/disk/Undo불변. UI기본both=true/API기본false,방향별만료/scope검증.
+- 실제저장SAM생성45 mask 두방향 step1:두께유효410 mean4.6859984805px/median4.9497474683,무효14/교차없음1025;CD유효5 mean138.832192799/median4.468396369,std166.523,무효4/교차없음1444. CD불안정과생성참값3px대비두께오차명시. 새SAM0회.
+- CSV1449+1453=2902행JSON대조,좌표왕복최대3.410605e-13px,원본PNG9hash보존. 시험scale1→2nm/px후두께만재측정시staleCD400/latestonly200/CD재측정후both200.
+- 새exact20×60px제어도형추가,별도GUI8890에서25~35step5두께20nm3행→CD60nm3행.레이어/GT없이target사용,생성1nm/px.4/5화면both옵션동기화확인.
+- 실제GUIZIP버튼→download이벤트20초timeout이었으나Downloads/TEM_results.zip6096bytes07:08:26KST저장됨.직접ZIP검사해두방향6행/JSON/includeGTfalse검증.실제파일기준성공,이벤트불수신기록.콘솔오류없음/Undo6불변.
+- staging전체139PASS30.305초,추가batch저장포함해방향별7PASS2.749초. Desktop최종전체140PASS27.944초/Node5PASS/pipcheckPASS/manifest167. pytest가아닌unittest,임시폴더권한승인범위내실행. 새설치없음.
+- GUI8890 PID7480/exec61768/stagingcwd/test-output/dual-axis-ui-v228/모델미로드. dualAxisTab228 id14handoff.증거evidence-v228/dual-axis-ui-viewport.png. fullPage캡처레이아웃비정상은도구출력반례로미사용,viewport정상.
+- 상세V228_REVIEW_KO.md,사용자의도일치표·장단점·후속우선순위FINAL_5H_REVIEW_KO.md,설치/모듈/데이터문서갱신.원본영상/모델/프로젝트/ZIP미게시.
+- 현재07:18KST,종료07:39:53까지약22분. 다음새모델실험보다배포/최종검토마무리. 종료뒤새실험시작금지/최종문서/heartbeat비활성화필수. production8876는아직v227프로세스(소스만v228)이며idle확인후교체예정.

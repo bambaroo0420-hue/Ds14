@@ -96,3 +96,10 @@ v2.2.7 rotation/compare의 rows는 proposed/failed, 각각 config와 각도/잔�
 비교만으로 revision/Undo/alignments/measurements/GT를 변경하지 않습니다. 채택은 기존 preview를 호출해 confirmed=false인 새 회전을 저장합니다.
 일괄 rows의 skipped는 blocked_by/error가 있으며 done에 포함됩니다. done은 terminal 처리 수, 성공 수는 status=done 행 수입니다.
 실패 이미지의 나머지 단계를 성공 처리하지 않고 건너뜁니다. 취소/중단의 미시작 단계는 skipped로 추가하지 않습니다.
+
+v2.2.8 `measurements_by_axis[image_id]`는 thickness/cd 각각 마지막 결과입니다. 여러 구간·scope 이력을 보관하는 구조가 아닙니다.
+`measurements[image_id]` 및 ZIP의 `measurement.json`은 가장 최근 실행 결과로 하위 호환을 유지합니다.
+export_all_axes는 API 기본 false, UI 기본 true입니다. true면 보유한 방향을 모두 검사·출력하며 실행하지 않은 방향을 새로 계산하지 않습니다.
+ZIP `measurements/thickness.json`, `measurements/cd.json` 및 합쳐진 measurements.csv의 axis를 사용하세요. invalid/no-intersection 행도 그대로 출력합니다.
+방향별 scope 불일치·입력 hash 만료는 전체 내보내기를 거절합니다. 최신 방향만 원하면 함께 출력 옵션을 끌 수 있습니다.
+export_mode.json의 measurement_axes는 실제 포함된 방향 목록입니다. export는 revision/Undo/프로젝트 파일을 변경하지 않습니다.

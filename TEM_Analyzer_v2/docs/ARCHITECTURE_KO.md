@@ -89,3 +89,9 @@ UI 비교창은 `prepareComparisonImage` load/decode를 기다립니다. 실패/
 v2.2.7 `compare_alignment`는 기존 alignment를 고정 비교 계획으로 여러 번 호출하지만 state를 바꾸지 않습니다.
 `rotation_compare.js`가 표를 표시하고 선택 시 별도 preview를 실행합니다. 비교 API를 checkpoint에서 제외하되 project gate/busy 보호는 유지하세요.
 JobManager의 skipped행은 앞 단계 실패로 실행하지 않은 작업입니다. 완료 표본·성공 단계가 아니며 후속 영상은 계속 처리합니다.
+
+v2.2.8 `services/measurement.stored_measurements/save_measurement`가 단일/일괄 양쪽 저장 책임을 담당합니다.
+`measurements_by_axis[iid][axis]`는 방향별 최신값, 기존 `measurements[iid]`는 가장 최근 실행값입니다. 기존 프로젝트는 읽을 때 legacy를 합칩니다.
+`routes/workflow.result_zip`은 모든 포함 결과를 scope/hash 검사한 뒤 ZIP을 만듭니다. 한 방향이 만료됐다고 몰래 생략하지 마세요.
+export는 `v2_api` checkpoint 제외지만 gate/busy 차단은 유지합니다. `storage` 이미지 휴지통에 방향별 결과도 함께 포함합니다.
+`scopes.js`가 4/5화면의 함께 출력 옵션을 공유하고 `metrology.js`는 상태만 보여줍니다. 계측표는 최신 한 방향입니다.
