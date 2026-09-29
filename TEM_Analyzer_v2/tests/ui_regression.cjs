@@ -48,6 +48,15 @@ const run=s=>vm.runInContext(s,context);
  elements.roiTool.value='positive';const p=run('[roiEditor.pan[0]+2*roiEditor.scale,roiEditor.pan[1]+3*roiEditor.scale]');run(`roiEditor.down({button:0,pointerId:1,clientX:${p[0]},clientY:${p[1]}})`);assert.equal(run('roiEditor.points[0][0]'),2);assert.equal(run('roiEditor.points[0][1]'),3);assert.equal(run('points.length'),0);
  let payload;context.capturePayload=x=>{payload=x};await run("roiEditor.api=async (path,body)=>{capturePayload(body);return path==='sam/prompt'?{preview_token:'preview123',area:20}:{id:3}};roiEditor.onSaved=async()=>{};roiEditor.run()");assert.equal(payload.parent,1);assert.equal(payload.image_id,'a');assert.equal(payload.points[0][2],1);assert.equal(payload.preview,true);assert(elements.roiDialog.open,'inference must leave review dialog open');assert.equal(run('roiEditor.preview.token'),'preview123');assert(!elements.roiAccept.disabled,'accept must be enabled after preview');await run('roiEditor.accept()');assert(!elements.roiDialog.open);
 
+ // Independent ROI does not require any selected parent or parent-mask fetch.
+ const maskFetchCount=calls.filter(x=>x.includes('/masks/')).length;
+ await elements.independentROI.onclick();assert.equal(run('roiEditor.parent'),null);assert.deepEqual(Array.from(run('roiEditor.roi')),[0,0,16,8]);
+ assert.equal(elements.roiTool.value,'roi');assert.equal(calls.filter(x=>x.includes('/masks/')).length,maskFetchCount);
+ run('roiEditor.points=[[2,3,1]]');elements.roiMaskChoice.value='2';await run('roiEditor.run()');
+ assert.equal(payload.parent,null);assert.equal(payload.mask_choice,2);assert(!elements.roiAccept.disabled);
+ elements.roiMaskChoice.value='1';elements.roiMaskChoice.onchange();assert(elements.roiAccept.disabled,'changing native candidate requires a fresh preview');
+ elements.roiClose.onclick();assert(!elements.roiDialog.open);
+
  // Image navigation restores the selected image's scale and its own draft points.
  state.images.b={name:'second',width:16,height:8};state.candidates.b=[];state.scale.b={bar:[[1,1],[11,1]],length:20,unit:'nm',nm_per_px:2,confirmed:true};
  await elements.nextImage.onclick();assert.equal(run('current'),'b');assert.equal(elements.scaleLength.value,'20');assert.equal(run('gridPoints.length'),0);assert(elements.scaleInfo.textContent.includes('0.500000 px/nm'));

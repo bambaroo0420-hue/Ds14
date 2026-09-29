@@ -69,6 +69,12 @@ v2.2.3 프롬프트 검수 gate 모사 테스트는 `node tests/ui_prompt_batch.
 
 ## 수정 시 주의
 
+독립 ROI 회귀는 `python -B -m unittest discover -s tests -p test_roi_domains.py`와 기존 Node UI 테스트에 포함됩니다.
+실제 비교는 `tools/compare_roi_prompts.py --attached <첨부 프로젝트> --public <프로파일 프로젝트> --checkpoint <pth> --output <새 폴더>`입니다.
+후보별 비교는 `tools/compare_roi_alternatives.py --source <직전 비교 폴더> --checkpoint <pth> --output <새 폴더>`입니다.
+계측은 `tools/validate_roi_metrology.py --source <후보별 비교 폴더> --output <새 폴더>`로 실제 SAM 출력과 생성 3px 띠를 비교합니다.
+새 학습을 하지 않으며 원본을 읽기만 합니다. 표본 평균 개선을 경계 정확도 개선으로 간주하지 마세요.
+
 - 검수/좌표 규칙 변경 시 `test_metrology.py`, `test_workflow_v21.py`를 함께 확인합니다.
 - UI 작업은 테스트용 프로젝트에서 수행합니다. 회사 GT 폴더를 테스트 대상으로 쓰지 않습니다.
 - 파일 변경은 새로운 mask ID로 기록합니다. 원본 후보와 연결 정보를 보존합니다.

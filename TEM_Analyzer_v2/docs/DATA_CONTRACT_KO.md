@@ -68,3 +68,13 @@ v2.2.3 `prompt_transfers[image_id]`는 preset ID, source/target image, 원본 pi
 자동점은 제외/영상 밖이면 경고와 함께 제거, 수동점과 box가 유효 범위를 벗어나면 전체 준비를 거절합니다.
 회전된 box는 축 정렬 외접 box이며 다른 물질까지 포함할 수 있으므로 검토해야 합니다.
 GT 확정과 프롬프트 확정은 독립적입니다. 프로그램 검증 도구의 자동 확인은 전문가의 물질 판정이 아닙니다.
+
+v2.2.4 `candidate.inference_domains`는 원본 정수 픽셀의 `[x0,y0,x1,y1]` 반열린 ROI 배열입니다.
+ROI 밖 결과는 0이나 이를 배경 GT로 해석하지 않습니다. 내부 crop 가장자리 2px 이내 foreground를 잡아 2px dilation한 영역은 unknown이며 EXCLUDED가 우선합니다.
+실제 원본 프레임 경계는 별도의 기존 프레임 정책입니다. 자연 끝점도 crop에 가까우면 보수적으로 보호할 수 있고 멀리 떨어진 가짜 끝점은 보장하지 않습니다.
+원본 mask는 그대로이며, 부모 편집/복제/브러시/DP의 자식은 기존 도메인을 상속합니다. 밖을 보존하는 전체 부모 ROI edit에는 새 도메인을 추가하지 않습니다.
+레이어 합성에서는 보호 영역을 다른 마스크가 덮어도 보수적으로 unknown 유지합니다. 자동 완결성 판정이 아니므로 더 넓은 ROI의 독립 재분할로 재검토하세요.
+`mask_choice=-1`은 최고 예측점수, 0/1/2는 기본 SAM 다중 후보이며 학습 single-mask 경로는 0만 지원합니다.
+`multimask_scores`는 SAM 예측값이지 실측 IoU가 아닙니다. `prompt_violations`는 입력 점 배열의 0-based index이며 결과가 라벨과 다를 때 기록합니다.
+프롬프트 준수 판정은 가까운 pixel centre를 사용합니다. ROI 제한/제외 영역 적용 이후 전문가 정확도 검사를 대체하지 않습니다.
+독립 preview의 parent는 null입니다. accept 전 mask 파일/후보 생성 없음, 이미지/제외/전처리/모델이 바뀌면 만료됩니다.

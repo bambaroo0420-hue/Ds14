@@ -167,3 +167,31 @@
 2. 첨부45도 방향의 색선·화살표 영향, material 경계검증없는 높은신뢰도 자동확정 금지. v222실패반례를그대로기준으로사용.
 3. preset잘못된점의영상별수정편의·다중preset은아직제한. 검수생략자동화보다실패격리/명시적경고우선.
 4. 07:39:53 KST 이후새실험금지,진행작업안전마무리·최종MD·heartbeat비활성화. 다음에는이반복의16회실험을그대로반복하지말것.
+
+### 04:59 KST 전후 — v2.2.3 게시 완료
+
+- GitHub 기존 branch/PR #1 갱신: commit `8934bd02be4ff2959d0396b4b9eb24b1aa8ea2b4`, tree `7c7ae70ddc0e50f39fb0235a6e91fa045b19a9bd`, parent `3d8be3d1ee5cd43d39a6adea9683c3443d7e4b28`. 27개 소스·문서 파일을 개별 읽기, 로컬 staged tree와 원격 tree 일치 후 게시. fetch/update-ref 후 Git 깨끗함. main 미병합.
+- Desktop 최종 Python108 tests PASS16.632s, Node기존+신규 UI PASS. manifest141개. 보고서 V223_REVIEW_KO.md는 실제SAM16회(비교13+GUI3), GUI미검수실패→검수→재시도를 포함. 파이프라인 검수와 전문가GT를 명확히 구분.
+- 사용자 앱8876: 진행작업0/모델미로드/정확한CLI 확인 후 본인PID38644만중지. 새PID38008 / exec session64563, Desktop cwd, 기존test-output/crop19-v22/project 유지. HTTP200/2.2.3/새검수API/영상5장 확인. 사용자브라우저는임의새로고침안함. 모델파일재설치불필요.
+- GUI8885 PID17112/session1681 유지. 최종정합알고리즘/새GUI테스트완료, 실제모델로드됨. storage.py삭제draft메타데이터후속패치는서버메모리미반영이므로삭제테스트하려면해당서버재시작필요(Desktop108회귀에서는검증완료).
+- CUA reuseTab9, profileTab8, samplingTab7 handoff. 증거 evidence-v223/transferred-three-cell-points.png, reuse-sam-batch-complete.png, review-gate-retry-complete.png. 다음반복은새ROI/얇은층검증으로이어간다.
+- 자동예약 tem-v2-5 계속활성. 07:39:53 KST 종료에비활성화해야한다. 이마지막게시메타데이터는staging기록이며다음코드게시때포함한다.
+
+### 05:30 KST 전후 — 5차 v2.2.4 검증 완료, 게시 준비
+
+- 부모 없는 독립 ROI 확대 분할, 기본 SAM 3후보 선택, 저장 전 preview, 점 불일치 QC 경고. parent ROI 경로 유지. 새 의존성/모델 설치 없음.
+- 실제 SAM 38예측: 7사례×full/crop=14 cold(191.555s), 7 ROI×3후보=21(95.816s; 7 cold+14embedding reuse), 실제GUI3(1cold+2reuse). 합성3px띠0/30/45° localIoU full .05547/.04457/.04474 → crop .75188/.64392/.66667. 자동 물질 분류 성능 아님.
+- 첨부TaOx/TiOxNy는 세후보모두 음성점2개위반+이웃층포함 실패. 최고score .994/.990도오답. TiOxNy후보3각−44.38은오버레이가잘못돼성공으로세지않음. 공개140/hafnia는무GT;hafnia기존OCR제외후양성1개뿐.
+- inference_domains provenance/상속, 내부crop2px근접foreground+2pxdilation unknown, 자동회전/DP보호. 첫계측도구는45°출력이1~2px안쪽에멈춰exact-touch가정실패→near-edge보완→새폴더최종완료. 원본mask불변. 전체부모ROI edit는새cutdomain붙이지않음.
+- 실제SAM후보3만선택한합성3장:회전3/3→미검수계측3/3→부분GT+계측6/6→ZIP. 레이어미배정/다른후보보존/cutunknown확인. 평균4.000/3.332/4.161px vs생성3px, 분절/과대오차남음. 회전추정0/29.92407/44.61723°. 계측정확도성공아님.
+- Python116 tests PASS21.895s, Node기존+prompt_batch PASS, pip check PASS. Desktop최종검증/게시예정.
+- 실제GUI8886 독립드래그ROI[601,64,899,420], +3/−2,후보3→1→3,이전previewaccept차단,후보22만미배정scope,GT없이회전−29.95847/계측. 최종near-edge서버재시작후이전결과만료→재회전/확정/계측확인. 평균3.5496/중앙4.3932nm(생성1nm/px),유효19/무효21/교차없음125,cut145px. JS오류없음.
+- GUI8886 PID20844/exec session9961, staging test-output/roi-ui-v224,모델미로드(이전PID1756에서실제SAM3회후재시작). CUA roiTab224 id10 handoff. 증거 evidence-v224/independent-roi-rotation.png 및 final-roi-rotation.png.
+- 상세 docs/V224_REVIEW_KO.md. 도구 compare_roi_prompts.py/compare_roi_alternatives.py/validate_roi_metrology.py. 결과 roi-compare-v224/roi-alternatives-v224/roi-metrology-v224-final. 실패초안 roi-metrology-v224도보존. 모델/영상/결과ZIP미업로드.
+
+#### 다음 반복 후보 (38회 같은 실험 반복 금지)
+
+1. 얇은층 계측에서 invalid_region이 crop끝이 아닌 내부에도 다수 발생. 후보의 실제구멍/분절과 contour끝점 반올림 validity 오판을 구분하기 위해 알려진3px binary띠0/30/45° 직접계측 대조. SAM오차와측정알고리즘오차를분리. 작은값을몰래삭제하거나GTvalidity를전부true로바꾸지말기.
+2. 첨부45°ROI분할은미해결. 알려진방향보조사전정렬+좁은box/프로파일 비교후원본좌표복원 검토. 색선/화살표가물질정답이라는가정금지. 별도입력/출력보존.
+3. 독립ROI일괄레시피/ROI자동탐색은아직미구현. 기존preset일괄과혼동하지말기. 신규외부모델전공식자료와데이터적합성확인.
+4. 종료07:39:53KST(22:39:53UTC)새실험중지/진행중작업안전마무리/최종MD/heartbeat tem-v2-5비활성화. 현재05:30대로종료아님.

@@ -53,6 +53,8 @@ def scope_arrays(project,iid,key):
     for name,value in [('unknown',UNKNOWN),('uncertain',UNCERTAIN)]:
         labels[unpack(annotations.get(name),mask.shape)]=value
     labels[unpack(annotations.get('background'),mask.shape)&mask]=UNKNOWN
+    from ..roi_domains import crop_guard
+    labels[crop_guard(project,iid,items)]=UNKNOWN
     labels[exclusion_mask(project,iid)|unpack(annotations.get('exclude'),mask.shape)]=EXCLUDED
     valid=labels==1
     return mask,labels,valid,items

@@ -7,6 +7,7 @@ from ..labels import compose
 from ..algorithms.metrology import edge_points, robust_line, rotation_transform, measure
 from .layers import active, unions, fingerprint
 from .scopes import scope_arrays, scope_reviewed
+from ..roi_domains import crop_guard
 
 
 def target_masks(project,iid,config):
@@ -23,6 +24,8 @@ def alignment(project,iid,config):
     lid,mask,candidates,reviewed=target_masks(project,iid,config)
     edge=config.get('edge','top');mode=config.get('mode','auto');region=config.get('roi')
     requested_mode=mode;used_edge=edge;warnings=[]
+    cropped=crop_guard(project,iid,candidates)
+    if cropped.any():warnings.append('ROI 절단 경계 주변은 회전 기준/계측에서 제외합니다. 후보는 ROI 밖으로 연장되지 않습니다.')
     if mode=='auto':
         mode='objects' if len(candidates)>1 else 'edge'
         if mode=='edge' and not region:
@@ -46,7 +49,7 @@ def alignment(project,iid,config):
     elif mode in ('edge','objects'):
         from scipy import ndimage as ndi
         from ..preprocessing import exclusion_mask
-        h,w=mask.shape;guard=ndi.binary_dilation(exclusion_mask(project,iid),iterations=3)
+        h,w=mask.shape;guard=ndi.binary_dilation(exclusion_mask(project,iid),iterations=3)|cropped
         margin=max(1.,min(h,w)*.005)
         def usable(m,which):
             pts=edge_points(m,which,region)
@@ -110,6 +113,9 @@ def run_measurement(project,iid,config):
     maximum=rot['transform']['width' if axis=='thickness' else 'height']-1
     end=cfg.get('stop');end=maximum if end is None else float(end)
     result=measure(m,valid&~all_conflicts,rot['transform'],axis,float(cfg.get('start',0)),end,float(cfg.get('step',10)),float(scale['nm_per_px']),cfg.get('sampling'))
+    cropped=crop_guard(project,iid,items)
+    result['roi_cut_guard_pixels']=int(cropped.sum())
+    if cropped.any():result['warnings'].append('추론 ROI 가장자리 2 px 이내의 절단 의심 영역을 2 px 확장해 미지정 처리합니다. 이를 통과하는 계측은 invalid_region이며 원시 길이만 보존합니다.')
     result.update(image_id=iid,layer_id=lid,scope_id=config.get('scope_id'),candidate_ids=[c['id'] for c in items],config=cfg,input_hash=measurement_hash(project,iid),
                   review_status='reviewed_masks' if reviewed else 'provisional_unreviewed_masks',
                   transform=copy.deepcopy(rot['transform']),scale=copy.deepcopy(scale),revision=project.state['revision'])

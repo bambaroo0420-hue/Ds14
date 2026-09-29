@@ -8,6 +8,7 @@ from ..labels import compose, protection, unpack, EXCLUDED
 from ..operations import excluded
 from ..preprocessing import effective_template, model_input
 from ..boundary import refine_all, topology
+from ..roi_domains import crop_guard
 
 
 def fingerprint(project, iid):
@@ -18,6 +19,8 @@ def fingerprint(project, iid):
     payload['preprocessing']['effective_regions']=effective_template(project,iid)
     payload['layers']=project.state['layers']
     payload['mask_scopes']={k:v['candidate_ids'] for k,v in project.state.get('mask_scopes',{}).get(iid,{}).items()}
+    from ..roi_domains import candidate_domains
+    if any(candidate_domains(c) for c in project.state['candidates'][iid]):payload['roi_cut_guard_version']=2
     return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
 
@@ -58,6 +61,7 @@ def propose_boundaries(project,iid,settings=None,region=None):
     masks=unions(project,iid);result={k:v.copy() for k,v in masks.items()}
     report=inspect_conflicts(project,iid,gap);guard=protection(project,iid)
     labels,_,_=compose(project,iid);guard |= labels==EXCLUDED
+    guard |= crop_guard(project,iid,[c for c in active(project,iid) if c['layer_id'] is not None])
     # Explicit user labels override automated correction, including explicit unknown.
     for value in project.state['annotations'].get(iid,{}).values():guard |= unpack(value,guard.shape)
     if region:

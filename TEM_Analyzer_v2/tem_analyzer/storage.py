@@ -113,6 +113,12 @@ class Project:
     def put_candidate(self,iid,mask,source,score=None,parent=None,prompts=None,**extra):
         self.require_image(iid);info=self.state['images'][iid];m=np.asarray(mask,bool)
         if m.shape!=(info['height'],info['width']):raise ValueError('마스크 크기가 원본과 다릅니다.')
+        from .roi_domains import candidate_domains
+        ancestor=next((c for c in self.state['candidates'][iid] if c['id']==parent),None)
+        domains=candidate_domains(ancestor)
+        for domain in extra.pop('inference_domains',[]):
+            if domain not in domains:domains.append(list(domain))
+        if domains:extra['inference_domains']=domains
         cid=self.state['next_candidate'];self.state['next_candidate']+=1
         Image.fromarray(m.astype('uint8')*255).save(self.mask_path(iid,cid))
         item=dict(id=cid,source=source,predicted_iou=score,parent=parent,prompts=prompts or {},layer_id=None,instance_id=None,reviewed=False,visible=True,active=True,deleted=False,area=int(m.sum()),**extra)

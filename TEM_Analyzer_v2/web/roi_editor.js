@@ -9,6 +9,7 @@ class ROIEditor {
   this.el('roiClear').onclick=()=>{if(this.busy)return;this.points=[];this.box=null;this.draw()};
   this.el('roiReset').onclick=()=>this.fit();
   this.el('roiShowPoints').onchange=()=>this.draw();this.el('roiShowMask').onchange=()=>this.draw();
+  this.el('roiMaskChoice').onchange=()=>this.draw();
   this.el('roiRun').onclick=()=>this.run();this.el('roiAccept').onclick=()=>this.accept();this.el('roiDiscard').onclick=()=>{if(!this.busy){this.discard();this.draw()}};this.el('roiShowPreview').onchange=()=>this.draw();
   this.canvas.addEventListener('pointerdown',e=>this.down(e));
   this.canvas.addEventListener('pointermove',e=>this.move(e));
@@ -21,6 +22,14 @@ class ROIEditor {
  async open(imageId,parent,image) {
   this.discard();this.imageId=imageId;this.parent=parent;this.image=image;this.points=[];this.box=null;this.drag=null;
   this.el('roiError').textContent='';
+  this.el('roiMaskChoice').value='-1';
+  if(parent==null){
+   this.overlay=document.createElement('canvas');this.overlay.width=image.width;this.overlay.height=image.height;
+   this.roi=[0,0,image.width,image.height];this.bounds=[...this.roi];this.el('roiTool').value='roi';
+   this.el('roiTitle').textContent='독립 ROI 확대 분할 (부모 마스크 없음)';
+   this.el('roiExplanation').textContent='노란 추론 ROI를 먼저 드래그한 뒤 양성·음성점 또는 SAM box를 지정하세요. ROI 밖을 채우지 않습니다. 가장자리에 닿은 절단선은 실제 경계가 아니며 GT/계측에서 미지정 처리합니다. 미리보기 확인 후에만 새 후보를 저장합니다.';
+   this.dialog.showModal();this.fit();return;
+  }
   const mask=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>reject(Error('부모 마스크를 읽을 수 없습니다.'));im.src=`/api/masks/${imageId}/${parent}.png?${Date.now()}`});
   this.overlay=document.createElement('canvas');this.overlay.width=mask.width;this.overlay.height=mask.height;
   const x=this.overlay.getContext('2d');x.drawImage(mask,0,0);const d=x.getImageData(0,0,mask.width,mask.height);
@@ -28,7 +37,8 @@ class ROIEditor {
   for(let i=0;i<d.data.length;i+=4){const inside=d.data[i]>127;if(inside){const px=i/4%mask.width,py=Math.floor(i/4/mask.width);x0=Math.min(x0,px);y0=Math.min(y0,py);x1=Math.max(x1,px+1);y1=Math.max(y1,py+1)}d.data[i]=30;d.data[i+1]=220;d.data[i+2]=170;d.data[i+3]=inside?90:0}
   if(x1<=x0||y1<=y0)throw Error('비어 있는 후보는 재분할할 수 없습니다.');
   x.putImageData(d,0,0);this.roi=[x0,y0,x1,y1];this.bounds=[Math.max(0,x0-16),Math.max(0,y0-16),Math.min(image.width,x1+16),Math.min(image.height,y1+16)];
-  this.el('roiTitle').textContent=`후보 #${parent} 내부 재분할`;this.dialog.showModal();this.fit();
+  this.el('roiTitle').textContent=`후보 #${parent} 내부 재분할`;this.el('roiTool').value='positive';
+  this.el('roiExplanation').textContent='선택 부모 내부 재분할입니다. ROI와 양성·음성점 또는 box를 지정하세요. 결과는 부모 마스크 내부로 제한하며, 주황색 미리보기 확인 후 새 후보로 저장합니다.';this.dialog.showModal();this.fit();
  }
  fit(){if(!this.image)return;this.canvas.width=Math.max(1,this.host.clientWidth);this.canvas.height=Math.max(1,this.host.clientHeight);const [x0,y0,x1,y1]=this.bounds;this.scale=Math.min(this.canvas.width/(x1-x0),this.canvas.height/(y1-y0))*.92;this.pan=[(this.canvas.width-(x0+x1)*this.scale)/2,(this.canvas.height-(y0+y1)*this.scale)/2];this.draw()}
  coord(e){const r=this.canvas.getBoundingClientRect();return [(e.clientX-r.left-this.pan[0])/this.scale,(e.clientY-r.top-this.pan[1])/this.scale]}
@@ -44,7 +54,7 @@ class ROIEditor {
   this.el('roiInfo').textContent=`ROI [${this.roi.join(', ')}] · 양성 ${this.points.filter(p=>p[2]).length} / 음성 ${this.points.filter(p=>!p[2]).length} · box ${this.box?1:0} · 휠 확대 / 보기·이동 드래그 / 우클릭 점 삭제`;
  }
 
- signature(){return JSON.stringify({image_id:this.imageId,parent:this.parent,roi:this.roi,points:this.points,box:this.box})}
+ signature(){return JSON.stringify({image_id:this.imageId,parent:this.parent,roi:this.roi,points:this.points,box:this.box,mask_choice:+this.el('roiMaskChoice').value})}
  updateButtons(){this.el('roiAccept').disabled=this.busy||!this.preview;this.el('roiDiscard').disabled=this.busy||!this.preview;this.el('roiRun').disabled=this.busy;this.el('roiClose').disabled=this.busy}
  discard(){const old=this.preview;this.preview=null;this.previewOverlay=null;if(old)this.api('roi-previews/'+old.token,null,'DELETE').catch(()=>{});this.updateButtons()}
  async run(){
@@ -57,7 +67,9 @@ class ROIEditor {
    const im=await new Promise((resolve,reject)=>{const x=new Image();x.onload=()=>resolve(x);x.onerror=()=>reject(Error('미리보기 이미지를 불러올 수 없습니다.'));x.src='/api/roi-previews/'+token+'.png'});
    const overlay=document.createElement('canvas');overlay.width=im.width;overlay.height=im.height;const x=overlay.getContext('2d');x.drawImage(im,0,0);const d=x.getImageData(0,0,im.width,im.height);
    for(let i=0;i<d.data.length;i+=4){const inside=d.data[i]>127;d.data[i]=255;d.data[i+1]=156;d.data[i+2]=35;d.data[i+3]=inside?170:0}x.putImageData(d,0,0);
-   this.preview={token,signature};this.previewOverlay=overlay;this.el('roiShowPreview').checked=true;this.el('roiError').textContent=`주황색 결과 ${result.area} px를 확인하세요. 아직 저장되지 않았습니다.`;
+   this.preview={token,signature};this.previewOverlay=overlay;this.el('roiShowPreview').checked=true;
+   const alternatives=(result.multimask_scores||[]).map((s,i)=>`${i+1}: ${s.toFixed(3)}`).join(' / ');
+   this.el('roiError').textContent=`주황색 결과 ${result.area} px를 확인하세요. 아직 저장되지 않았습니다. ${alternatives?'후보 예측점수 '+alternatives+' (정확도 보장 아님). ':''}${(result.warnings||[]).join(' ')}`;
   }catch(e){if(token&&!this.preview)this.api('roi-previews/'+token,null,'DELETE').catch(()=>{});this.el('roiError').textContent=e.message}
   finally{this.busy=false;this.draw()}
  }

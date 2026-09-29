@@ -64,11 +64,12 @@ class ModelService:
         digest=image_hash(image);cached=digest==self.image_key
         if not cached:self.predictor.set_image(image);self.image_key=digest
         return cached
-    def prompt(self,image,points=None,box=None,prior=None):
+    def prompt(self,image,points=None,box=None,prior=None,mask_choice=-1):
         if self.model is None:raise ValueError('먼저 SAM 모델을 로드하세요.')
         import torch
         import torch.nn.functional as F
         h,w=image.shape[:2];points=points or [];prior=prior or {};seed=None;origin='none'
+        if type(mask_choice) is not int or mask_choice not in (-1,0,1,2):raise ValueError('SAM 후보 선택은 자동(-1) 또는 0/1/2입니다.')
         if any(len(p)!=3 or not np.isfinite(p).all() or p[2] not in (0,1) or not(0<=p[0]<w and 0<=p[1]<h) for p in points):raise ValueError('점 좌표/라벨 오류')
         if box is not None and (len(box)!=4 or not np.isfinite(box).all() or not(0<=box[0]<box[2]<=w and 0<=box[1]<box[3]<=h)):raise ValueError('box 좌표 오류')
         cached=self._set_image(image);ctx=self.context(image)
@@ -83,7 +84,8 @@ class ModelService:
         xy=np.asarray([p[:2] for p in points],np.float32) if points else None;labels=np.asarray([p[2] for p in points],np.int32) if points else None
         with torch.inference_mode():
             full,scores,low=self.predictor.predict(point_coords=xy,point_labels=labels,box=np.asarray(box,np.float32) if box else None,mask_input=seed,multimask_output=not bool(self.info.get('single_mask') or seed is not None),return_logits=True)
-            i=int(np.argmax(scores));native=low[i:i+1].copy();z=full[i]
+            if mask_choice>=len(scores):raise ValueError('이 SAM 경로는 해당 후보 번호를 지원하지 않습니다. 학습/이전 mask 입력 경로는 단일 후보입니다.')
+            i=int(np.argmax(scores)) if mask_choice<0 else mask_choice;native=low[i:i+1].copy();z=full[i]
             if self.refiner is not None:
                 scale=min(1.,self.cfg['refine_side']/max(h,w));size=(max(8,round(h*scale)),max(8,round(w*scale)))
                 rgb=torch.as_tensor(image.copy(),device=self.info['device']).permute(2,0,1)[None].float()/255
@@ -91,18 +93,23 @@ class ModelService:
                 rgb=F.interpolate(rgb,size=size,mode='bilinear',align_corners=False);logits=F.interpolate(logits,size=size,mode='bilinear',align_corners=False)
                 z=F.interpolate(self.refiner(rgb,logits),size=(h,w),mode='bilinear',align_corners=False)[0,0].cpu().numpy()
         prob=1/(1+np.exp(-np.clip(z,-50,50)));threshold=self.cfg.get('mask_threshold',.5)
-        return dict(mask=prob>=threshold,score=float(scores[i]),logits=native,context=ctx,prior_source=origin,embedding_reused=cached,probability=prob)
-    def in_roi(self,image,roi,points=None,box=None,prior=None):
+        violations=[index for index,(x,y,label) in enumerate(points) if bool(prob[min(h-1,int(np.floor(y+.5))),min(w-1,int(np.floor(x+.5)))]>=threshold)!=bool(label)]
+        return dict(mask=prob>=threshold,score=float(scores[i]),logits=native,context=ctx,prior_source=origin,embedding_reused=cached,probability=prob,
+                    mask_choice=i,multimask_scores=[float(s) for s in scores],prompt_violations=violations)
+    def in_roi(self,image,roi,points=None,box=None,prior=None,mask_choice=-1):
         if len(roi)!=4 or not np.isfinite(roi).all():raise ValueError('ROI 오류')
+        if any(float(v)!=int(v) for v in roi):raise ValueError('추론 ROI는 정수 픽셀 경계로 지정하세요.')
         x0,y0,x1,y1=map(int,roi);h,w=image.shape[:2]
         if not(0<=x0<x1<=w and 0<=y0<y1<=h):raise ValueError('ROI 오류')
         if any(len(p)!=3 or not(x0<=p[0]<x1 and y0<=p[1]<y1) for p in (points or [])):raise ValueError('모든 점은 ROI 안에 있어야 합니다.')
-        if box is not None and not(x0<=box[0]<box[2]<=x1 and y0<=box[1]<box[3]<=y1):raise ValueError('box는 ROI 안에 있어야 합니다.')
+        if box is not None and (len(box)!=4 or not np.isfinite(box).all() or not(x0<=box[0]<box[2]<=x1 and y0<=box[1]<box[3]<=y1)):raise ValueError('box는 ROI 안에 있어야 합니다.')
         local=[[p[0]-x0,p[1]-y0,p[2]] for p in (points or [])];lb=[box[0]-x0,box[1]-y0,box[2]-x0,box[3]-y0] if box else None
         pr=None
         if prior and prior.get('mask') is not None:pr={'mask':prior['mask'][y0:y1,x0:x1]}
-        item=self.prompt(image[y0:y1,x0:x1],local,lb,pr) if pr else self.prompt(image[y0:y1,x0:x1],local,lb)
-        full=np.zeros((h,w),bool);full[y0:y1,x0:x1]=item['mask'];item['mask']=full;item.pop('logits',None);item.pop('context',None);item.pop('probability',None);return item
+        kwargs={'mask_choice':mask_choice} if mask_choice!=-1 else {}
+        item=self.prompt(image[y0:y1,x0:x1],local,lb,pr,**kwargs) if pr else self.prompt(image[y0:y1,x0:x1],local,lb,**kwargs)
+        full=np.zeros((h,w),bool);full[y0:y1,x0:x1]=item['mask'];item['mask']=full;item['inference_domains']=[[x0,y0,x1,y1]]
+        item.pop('logits',None);item.pop('context',None);item.pop('probability',None);return item
     def automatic(self,image,grid=16,pred_iou=.90,stability=.92,nms=.8,exclude=None,prepared_points=None):
         if self.model is None:raise ValueError('먼저 SAM 모델을 로드하세요.')
         from .prompts import grid_points,validate_points

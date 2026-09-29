@@ -9,7 +9,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from .preprocessing import effective_template, model_input, restrict_mask, apply_one
+from .preprocessing import effective_template, model_input, restrict_mask, apply_one, exclusion_mask
 from .storage import Project
 from .sam_service import ModelService
 from .operations import excluded, brush, scale_from_points, detect_scale, layer_coverage, roi_pixels
@@ -145,7 +145,7 @@ def automatic(body:AutoIn):
     except (KeyError,ValueError,RuntimeError,MemoryError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
 
-class PromptIn(BaseModel):preview:bool=False;image_id:str;points:list[list[float]]=[];box:list[float]|None=None;roi:list[float]|None=None;parent:int|None=None;mode:str='extract'
+class PromptIn(BaseModel):preview:bool=False;image_id:str;points:list[list[float]]=[];box:list[float]|None=None;roi:list[float]|None=None;parent:int|None=None;mode:str='extract';mask_choice:int=Field(default=-1,ge=-1,le=2)
 @app.post('/api/sam/prompt')
 def prompt(body:PromptIn):
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다.')
@@ -153,7 +153,7 @@ def prompt(body:PromptIn):
         im=model_input(project,body.image_id)
         from .prompts import validate_points
         validate_points(body.points,im.shape[1],im.shape[0])
-        ex=excluded(im.shape[:2],effective_template(project,body.image_id))
+        ex=exclusion_mask(project,body.image_id)
         if any(ex[int(p[1]),int(p[0])] for p in body.points):raise ValueError('제외 ROI 안의 점은 사용할 수 없습니다.')
         if body.parent is not None and project.candidate(body.image_id,body.parent) is None:raise ValueError('부모 후보가 없습니다.')
         if body.mode not in ('extract','edit'):raise ValueError('편집 모드 오류')
@@ -161,9 +161,11 @@ def prompt(body:PromptIn):
         if body.mode=='edit' and not parent:raise ValueError('수정할 부모 후보를 선택하세요.')
         project.assert_editable(parent)
         prior=load_prior(project,body.image_id,parent) if body.mode=='edit' else None
-        item=model.in_roi(im,body.roi,body.points,body.box,prior) if body.roi and prior else model.in_roi(im,body.roi,body.points,body.box) if body.roi else model.prompt(im,body.points,body.box,prior) if prior else model.prompt(im,body.points,body.box)
+        choice={'mask_choice':body.mask_choice} if body.mask_choice!=-1 else {}
+        item=model.in_roi(im,body.roi,body.points,body.box,prior,**choice) if body.roi and prior else model.in_roi(im,body.roi,body.points,body.box,**choice) if body.roi else model.prompt(im,body.points,body.box,prior,**choice) if prior else model.prompt(im,body.points,body.box,**choice)
         if body.mode=='edit' and body.roi:
             x0,y0,x1,y1=map(int,body.roi);old=project.mask(body.image_id,body.parent);old[y0:y1,x0:x1]=item['mask'][y0:y1,x0:x1];item['mask']=old
+            item.pop('inference_domains',None) # Complete parent kept outside ROI; inherit its original domains only.
         if parent:
             from .labels import protection
             protected=protection(project,body.image_id);old=project.mask(body.image_id,body.parent);item['mask'][protected]=old[protected]
@@ -171,8 +173,8 @@ def prompt(body:PromptIn):
             item['mask'] &= project.mask(body.image_id,body.parent)
             if not item['mask'].any():raise ValueError('부모 마스크 내부에 남은 영역이 없습니다. ROI와 점을 확인하세요.')
         if body.preview:
-            return roi_reviews.stage(body.image_id,body.parent,item,{'points':body.points,'box':body.box,'roi':body.roi})
-        return save_prediction(project,body.image_id,item,'edit-preview' if body.mode=='edit' else 'roi-refine' if body.roi else 'manual',body.parent,{'points':body.points,'box':body.box,'roi':body.roi})
+            return roi_reviews.stage(body.image_id,body.parent,item,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice,'mode':body.mode})
+        return save_prediction(project,body.image_id,item,'edit-preview' if body.mode=='edit' else 'roi-refine' if body.roi else 'manual',body.parent,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice})
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
 
@@ -463,7 +465,7 @@ transaction_gate=install(app,project,model,model_lock)
 
 from .roi_review import ROIReviews
 roi_reviews=ROIReviews(project,model)
-roi_reviews.install(app,model_lock,lambda r:save_prediction(project,r['image_id'],r['item'],'roi-refine',r['parent'],r['prompts']))
+roi_reviews.install(app,model_lock,lambda r:save_prediction(project,r['image_id'],r['item'],'edit-preview' if r['prompts'].get('mode')=='edit' else 'roi-extract' if r['parent'] is None else 'roi-refine',r['parent'],r['prompts']))
 
 from .routes.workflow import install as install_workflow
 install_workflow(app,project,model,model_lock,transaction_gate)

@@ -20,10 +20,10 @@ def load_prior(project,iid,c):
 
 
 def save_prediction(project,iid,item,source,parent=None,prompts=None):
-    c=project.put_candidate(iid,restrict_mask(project,iid,item['mask']),source,float(item['score']) if item.get('score') is not None else None,parent,prompts)
+    c=project.put_candidate(iid,restrict_mask(project,iid,item['mask']),source,float(item['score']) if item.get('score') is not None else None,parent,prompts,inference_domains=item.get('inference_domains',[]))
     if item.get('logits') is not None and item.get('context'):
         np.save(project.root/'logits'/f"{iid}_{c['id']}.npy",item['logits'],allow_pickle=False);c['logits_context']=item['context']
-    for key in ('prior_source','embedding_reused'): 
+    for key in ('prior_source','embedding_reused','mask_choice','multimask_scores','prompt_violations'):
         if key in item:c[key]=item[key]
     project.save();return c
 

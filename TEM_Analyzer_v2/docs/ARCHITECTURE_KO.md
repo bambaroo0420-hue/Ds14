@@ -68,3 +68,10 @@ v2.2.3 재사용은 `JobManager(prompt_transfer)` → `prepare_transfer`만 실�
 새 준비 시작 시 기존 review를 먼저 만료시켜 부분 실패/취소에 옛 좌표가 살아나지 않게 합니다.
 `current_transfer` 검증을 우회하거나 실패 때 Grid로 대체하지 마세요. `tem:idle`에서 미리보기 로드 gate를 재적용합니다.
 `transfer_matrix`의 양쪽 제외 ECC는 optional OpenCV API입니다. 기존 ECC 경로를 유지하며 새 패키지 기능 미지원은 명시적 오류로 처리합니다.
+
+v2.2.4 독립 ROI는 기존 `ROIEditor.open(imageId, null, image)`와 `/api/sam/prompt`의 preview 경로를 재사용합니다.
+`ModelService.in_roi`가 원본 좌표 `inference_domains`를 만들고, `Project.put_candidate`가 부모 도메인을 상속합니다.
+`roi_domains.crop_contacts/crop_guard`는 near-edge 판정과 validity 보호의 단일 구현입니다. UI 경고와 GT/측정이 다른 규칙을 쓰지 않게 하세요.
+일반 부모 ROI edit는 바깥을 보존하므로 새 도메인을 붙이지 않습니다. crop-only 예측과 혼동하지 마세요.
+mask 파일은 불변으로 두고 GT validity/회전 기준/Gradient+DP guard를 바꿉니다. 규칙 변경 시 fingerprint의 roi_cut_guard_version도 올리세요.
+기본 SAM 후보 번호는 0/1/2(API), 1/2/3(UI)입니다. single-mask 모델에는 없는 번호를 조용히 대체하지 않습니다.
