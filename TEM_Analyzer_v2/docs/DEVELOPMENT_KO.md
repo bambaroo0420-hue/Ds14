@@ -69,6 +69,11 @@ v2.2.3 프롬프트 검수 gate 모사 테스트는 `node tests/ui_prompt_batch.
 
 ## 수정 시 주의
 
+계측 validity 회귀: `python -B -m unittest discover -s tests -p test_contour_validity.py`.
+`tools/validate_contour_validity.py --output <새 JSON> --project <기존 계측 프로젝트>`는 모델 호출 없이 대조군과 저장된 실제 mask를 검사합니다.
+진단용 all_true 결과를 프로젝트 GT에 적용하지 않습니다. 원시 길이/좌표가 동일해야 하며 실제 무효 구간은 계속 차단되어야 합니다.
+계측 알고리즘 버전 변경 후 GUI에서 이전 결과 만료 → 재측정 → 행 상태/CSV까지 확인하세요.
+
 독립 ROI 회귀는 `python -B -m unittest discover -s tests -p test_roi_domains.py`와 기존 Node UI 테스트에 포함됩니다.
 실제 비교는 `tools/compare_roi_prompts.py --attached <첨부 프로젝트> --public <프로파일 프로젝트> --checkpoint <pth> --output <새 폴더>`입니다.
 후보별 비교는 `tools/compare_roi_alternatives.py --source <직전 비교 폴더> --checkpoint <pth> --output <새 폴더>`입니다.

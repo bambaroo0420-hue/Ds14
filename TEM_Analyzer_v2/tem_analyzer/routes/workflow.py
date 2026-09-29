@@ -276,7 +276,7 @@ def install(app,project,model,model_lock,gate):
 
     def result_zip(ids,include_gt=False,scope_id=None):
         output=io.BytesIO();csvbuf=io.StringIO();writer=csv.writer(csvbuf)
-        writer.writerow(['image_id','image_name','layer_id','scope_id','axis','position_px','segment','status','length_px','length_nm','review_status','component_id','raw_length_nm','quality_flags','exclusion_reasons'])
+        writer.writerow(['image_id','image_name','layer_id','scope_id','axis','position_px','segment','status','length_px','length_nm','review_status','component_id','raw_length_nm','quality_flags','exclusion_reasons','valid_coverage_px','invalid_coverage_px'])
         # Validate every item before producing any successful-looking partial export.
         for iid in ids:
             project.require_image(iid)
@@ -311,7 +311,7 @@ def install(app,project,model,model_lock,gate):
                     for row in met['rows']:
                         name=project.state['images'][iid]['name']
                         if name.startswith(('=','+','-','@')):name="'"+name
-                        writer.writerow([iid,name,met['layer_id'],met.get('scope_id'),met['axis'],row['position_px'],row.get('segment'),row['status'],row.get('length_px'),row.get('length_nm'),met.get('review_status','unknown'),row.get('component_id'),row.get('raw_length_nm'),'|'.join(row.get('quality_flags',[])),'|'.join(row.get('exclusion_reasons',[]))])
+                        writer.writerow([iid,name,met['layer_id'],met.get('scope_id'),met['axis'],row['position_px'],row.get('segment'),row['status'],row.get('length_px'),row.get('length_nm'),met.get('review_status','unknown'),row.get('component_id'),row.get('raw_length_nm'),'|'.join(row.get('quality_flags',[])),'|'.join(row.get('exclusion_reasons',[])),row.get('valid_coverage_px'),row.get('invalid_coverage_px')])
             z.writestr('measurements.csv','\ufeff'+csvbuf.getvalue())
         return Response(output.getvalue(),media_type='application/zip',headers={'Content-Disposition':'attachment; filename="TEM_results.zip"'})
 

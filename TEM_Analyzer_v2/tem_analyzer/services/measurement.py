@@ -90,7 +90,7 @@ def alignment_current(project,iid):
 
 def measurement_hash(project,iid):
     reviews={k:v.get('review_hash') for k,v in project.state.get('mask_scopes',{}).get(iid,{}).items()}
-    data=['contour_sampling_v2',fingerprint(project,iid),project.state.get('alignments',{}).get(iid),project.state['scale'].get(iid),reviews]
+    data=['contour_validity_v3',fingerprint(project,iid),project.state.get('alignments',{}).get(iid),project.state['scale'].get(iid),reviews]
     return hashlib.sha256(json.dumps(data,sort_keys=True).encode()).hexdigest()
 
 

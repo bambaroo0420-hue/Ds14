@@ -41,6 +41,12 @@ GT ZIP은 검수된 유효 영역을 출력하며, 미지정 부분이 있어도
 JSON에는 변환·축척·측정 위치·원본 역변환 끝점·입력 해시가 포함됩니다.
 CSV 무효 측정은 빈 길이와 실패 상태로 기록하고 0 nm로 위장하지 않습니다.
 
+v2.2.5 계측은 mask와 `(mask & valid)`를 동일한 0.5 보간 윤곽선으로 변환합니다.
+각 측정 선분 전체의 `valid_coverage_px`/`invalid_coverage_px`를 기록하며 후자가 1e-7 px보다 크면 무효입니다.
+교차 없음 행은 coverage 필드가 없고 CSV는 빈칸입니다. 원시 길이/좌표는 무효 행에도 보존합니다.
+validity를 팽창시키거나 unknown을 채우지 않습니다. 영상 extent의 pixel-cell 경계와 보간 mask contour는 다른 기하입니다.
+계측 hash는 `contour_validity_v3`로 갱신되어 기존 계측이 만료되지만 회전 hash는 바뀌지 않습니다.
+
 v2.2 선택 집합은 `scope_id`와 이미지별 `candidate_ids`로 지정합니다. 레이어 미배정 후보도 가능합니다.
 부분 GT의 1은 선택 집합의 binary target 합집합이며 물질 ID가 아닙니다. 미선택 영역은 65535이며 자동 배경으로 바꾸지 않습니다.
 

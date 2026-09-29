@@ -1,7 +1,8 @@
 """Rigid pixel-centre transforms and subpixel contour intersections.
 
 Points are (x,y), arrays are [y,x]. Angle is clockwise in image coordinates.
-Pixel cells occupy [x-.5,x+.5); alignment never changes physical pixel size.
+Image extent is [-.5,w-.5] x [-.5,h-.5]; mask geometry is the interpolated
+0.5 contour, not the union of square pixel cells. Alignment preserves scale.
 """
 import math
 import numpy as np
@@ -98,7 +99,19 @@ def line_intervals(loops, coordinate, axis):
     return [(crossings[i],crossings[i+1]) for i in range(0,len(crossings),2) if crossings[i+1]-crossings[i]>1e-6]
 
 
+def interval_coverage(lo,hi,valid_spans):
+    """Coverage in the SAME interpolated-contour geometry as the measurement.
+
+    Nearest-pixel validity is a different geometry at concave/diagonal corners.
+    Never dilate validity or skip its unknown/excluded interior holes to fix it.
+    """
+    covered=sum(max(0.,min(hi,b)-max(lo,a)) for a,b in valid_spans)
+    return max(0.,min(hi-lo,covered))
+
+
 def measure(mask, valid, transform, axis, start, stop, step, nm_per_px, sampling=None):
+    mask=np.asarray(mask,bool);valid=np.asarray(valid,bool)
+    if mask.ndim!=2 or valid.shape!=mask.shape:raise ValueError('마스크와 유효 영역은 동일한 2차원 크기여야 합니다.')
     if axis not in ('thickness','cd'):raise ValueError('측정 방향은 thickness/cd입니다.')
     numbers = [start,stop,step,nm_per_px]
     if not np.isfinite(numbers).all() or step<=0 or stop<start or nm_per_px<=0:
@@ -121,28 +134,29 @@ def measure(mask, valid, transform, axis, start, stop, step, nm_per_px, sampling
     for cid,sl in enumerate(ndi.find_objects(labels),1):
         local=labels[sl]==cid;offset=np.array([sl[1].start,sl[0].start])
         loops=[transform_points(c+offset,transform['matrix']) for c in mask_contours(local)]
+        good=local&valid[sl]
+        all_valid=bool(valid[sl][local].all())
+        valid_loops=loops if all_valid else [transform_points(c+offset,transform['matrix']) for c in mask_contours(good)] if good.any() else []
         coordinates=np.concatenate(loops)[:,fixed];lo,hi=float(coordinates.min()),float(coordinates.max())
         trim=(hi-lo)*(1-fraction)/2
-        components.append(dict(component_id=cid,loops=loops,bounds=[lo,hi],window=[lo+trim,hi-trim],area_px=int(local.sum())))
+        components.append(dict(component_id=cid,loops=loops,valid_loops=valid_loops,all_valid=all_valid,bounds=[lo,hi],window=[lo+trim,hi-trim],area_px=int(local.sum())))
     rows=[];h,w=mask.shape
     for position in np.arange(start,stop+step*1e-6,step):
         intervals=[]
         for comp in components:
             if not comp['bounds'][0]<=position<=comp['bounds'][1]:continue
             spans=line_intervals(comp['loops'],float(position),axis)
-            intervals.extend((lo,hi,comp,len(spans)) for lo,hi in spans)
+            valid_spans=spans if comp['all_valid'] else line_intervals(comp['valid_loops'],float(position),axis)
+            intervals.extend((lo,hi,comp,len(spans),interval_coverage(lo,hi,valid_spans)) for lo,hi in spans)
         intervals.sort(key=lambda x:x[0])
         if not intervals:
             rows.append(dict(position_px=float(position),status='no_intersection',length_nm=None));continue
-        for part,(lo,hi,comp,span_count) in enumerate(intervals):
+        for part,(lo,hi,comp,span_count,covered) in enumerate(intervals):
             a=[position,lo] if axis=='thickness' else [lo,position]
             b=[position,hi] if axis=='thickness' else [hi,position]
-            # Test the interior only: contour endpoints lie on pixel-cell boundaries.
-            ts=np.linspace(1e-4,1-1e-4,max(3,int(np.ceil((hi-lo)*2))+1))
-            original=transform_points(np.array(a)[None,:]+ts[:,None]*(np.array(b)-a),transform['inverse'])
-            indices=np.floor(original+.5).astype(int)
-            inside=(indices[:,0]>=0)&(indices[:,0]<w)&(indices[:,1]>=0)&(indices[:,1]<h)
-            ok=bool(inside.all() and valid[indices[:,1],indices[:,0]].all()) if inside.all() else False
+            # Require full continuous interval coverage by valid target contours;
+            # sampling can both falsely reject corners and miss tiny invalid cuts.
+            invalid=max(0.,hi-lo-covered);ok=invalid<=1e-7
             endpoints=transform_points([a,b],transform['inverse'])
             frame=bool((endpoints<=0).any() or (endpoints[:,0]>=w-1).any() or (endpoints[:,1]>=h-1).any())
             outside=not comp['window'][0]<=position<=comp['window'][1]
@@ -160,6 +174,7 @@ def measure(mask, valid, transform, axis, start, stop, step, nm_per_px, sampling
             rows.append(dict(position_px=float(position),segment=part,component_id=comp['component_id'],status=status,
                              quality_flags=flags,exclusion_reasons=reasons,
                              length_px=float(hi-lo),raw_length_nm=float((hi-lo)*nm_per_px),length_nm=float((hi-lo)*nm_per_px) if status=='ok' else None,
+                             valid_coverage_px=float(covered),invalid_coverage_px=float(invalid),
                              aligned_endpoints=[list(map(float,a)),list(map(float,b))],
                              original_endpoints=endpoints.tolist()))
     values=[r['length_nm'] for r in rows if r['status']=='ok']
@@ -171,10 +186,11 @@ def measure(mask, valid, transform, axis, start, stop, step, nm_per_px, sampling
     if values and len(values)>=5 and abs(float(np.mean(values)-np.median(values)))>max(1e-9,abs(float(np.median(values)))*.1):
         warnings.append('평균과 중앙값이 10% 이상 다릅니다. 끝부분·다중 교차·실제 두께 변화를 검토하세요. 자동 이상값 삭제는 하지 않았습니다.')
     for comp in components:
-        del comp['loops']
+        del comp['loops'];del comp['valid_loops'];del comp['all_valid']
         comp['accepted_count']=sum(r.get('component_id')==comp['component_id'] and r['status']=='ok' for r in rows)
     return dict(rows=rows,axis=axis,unit='nm',summary=dict(count=len(values),mean=float(np.mean(values)) if values else None,
                 median=float(np.median(values)) if values else None,std=float(np.std(values)) if values else None,
                 min=float(np.min(values)) if values else None,max=float(np.max(values)) if values else None,status_counts=counts),
                 sampling=policy,components=components,warnings=warnings,
-                method='rigid-transformed mask contour intersections; geometric components and disconnected intervals measured separately; explicit sampling exclusions retained as rows')
+                validity_method='full interval coverage by equally interpolated valid-target contours; tolerance 1e-7 px; no validity dilation',
+                method='rigid-transformed mask contour intersections; contour-consistent validity; geometric components and disconnected intervals measured separately; explicit sampling exclusions retained as rows')

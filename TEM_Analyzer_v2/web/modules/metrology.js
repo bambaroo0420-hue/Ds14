@@ -38,7 +38,7 @@ export function mountMetrology(T) {
       if(r.measurement){$('measurementInfo').textContent=(r.measurement_stale?'만료된 결과: 다시 측정하세요. ':'')+(r.measurement.review_status==='provisional_unreviewed_masks'?'미검수 마스크의 잠정 계측값 · ':'검수 마스크 · ')+savedDescription(r.measurement)+' '+(r.measurement.warnings||[]).join(' ');showRows(r.measurement)}
     }).catch(e=>T.say(e.message))}
   }
-  function showRows(result){$('measureRows').innerHTML=result.rows.slice(0,300).map(r=>`<tr><td>${r.position_px.toFixed(2)}</td><td>${r.segment??'—'} / 객체 ${r.component_id??'—'}</td><td>${r.length_nm==null?'—':r.length_nm.toFixed(4)}${r.length_nm==null&&r.raw_length_nm!=null?' (제외 원시값 '+r.raw_length_nm.toFixed(4)+')':''}</td><td>${T.escape([...new Set([r.status,...(r.quality_flags||[])])].map(statusName).join(' · '))}</td></tr>`).join('')}
+  function showRows(result){$('measureRows').innerHTML=result.rows.slice(0,300).map(r=>`<tr><td>${r.position_px.toFixed(2)}</td><td>${r.segment??'—'} / 객체 ${r.component_id??'—'}</td><td>${r.length_nm==null?'—':r.length_nm.toFixed(4)}${r.length_nm==null&&r.raw_length_nm!=null?' (제외 원시값 '+r.raw_length_nm.toFixed(4)+')':''}</td><td>${T.escape([...new Set([r.status,...(r.quality_flags||[])])].map(statusName).join(' · '))}${r.invalid_coverage_px>1e-7?' · 무효 구간 '+r.invalid_coverage_px.toFixed(4)+' px':''}</td></tr>`).join('')}
   $('rotationUseROI').onclick=()=>{$('rotationROI').value=JSON.stringify(T.boundaryROI);T.say('SAM ROI 도구로 지정한 원본 구간을 사용합니다.')};
   $('rotationPreview').onclick=()=>T.task(async()=>{await T.api('workflow/rotation/preview',{image_id:T.current,config:rotationConfig()});await T.refresh()});
   $('rotationConfirm').onclick=()=>T.task(async()=>{await T.api('workflow/rotation/confirm',{image_id:T.current});await T.refresh()});

@@ -58,6 +58,11 @@ v2.2.1 계측 표본 정책은 `algorithms/metrology.measure(..., sampling=...)`
 값으로부터 임의로 이상치 임계값을 학습하거나 최종 길이를 조작하지 않습니다.
 알고리즘 변경으로 값의 의미가 달라지면 `services/measurement.measurement_hash`의 버전 표식도 갱신하세요.
 
+v2.2.5 `interval_coverage`는 정렬된 비중첩 valid contour 교차 구간의 길이 합입니다.
+전체 component가 유효하면 같은 contour를 재사용하고, 일부만 유효하면 `local & valid`의 contour를 별도 추출합니다.
+nearest-pixel 샘플링으로 다시 바꾸면 대각선 모서리의 false invalid와 작은 invalid 구간 누락이 재발합니다.
+`test_contour_validity.py`와 72조건 재현 도구로 길이 기하 보존/unknown 차단을 함께 확인하세요.
+
 v2.2.2 프로파일 설정은 `feature_prompts.FeatureConfig` → `propose` → `profile_proposals` 순서입니다.
 점 준비는 SAM 호출과 분리되며, 새 방식은 단일/일괄의 같은 FeatureConfig 검증을 거칩니다.
 `tools/compare_profile_prompts.py`는 생성 GT와 공개 무GT 데이터를 명시적으로 구분합니다.

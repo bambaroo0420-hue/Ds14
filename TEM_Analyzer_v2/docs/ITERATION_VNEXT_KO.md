@@ -195,3 +195,32 @@
 2. 첨부45°ROI분할은미해결. 알려진방향보조사전정렬+좁은box/프로파일 비교후원본좌표복원 검토. 색선/화살표가물질정답이라는가정금지. 별도입력/출력보존.
 3. 독립ROI일괄레시피/ROI자동탐색은아직미구현. 기존preset일괄과혼동하지말기. 신규외부모델전공식자료와데이터적합성확인.
 4. 종료07:39:53KST(22:39:53UTC)새실험중지/진행중작업안전마무리/최종MD/heartbeat tem-v2-5비활성화. 현재05:30대로종료아님.
+
+### 05:34 KST — v2.2.4 게시 완료
+
+- 기존 branch/PR #1: commit `866abe4e0477a266314e32938863502bdbc4da63`, tree `3b4665d559bf0cbcf8e2d4f8c9cf3b4c7306aeca`, parent `8934bd02be4ff2959d0396b4b9eb24b1aa8ea2b4`. 소스27개 파일별읽기, 원격/로컬tree동일확인후nonforce게시. fetch/update-ref후Git깨끗함. main미병합.
+- Desktop 최종 Python116 PASS20.425s, Node기존+prompt_batch PASS, manifest147개. 영상/가중치/ZIP/테스트프로젝트미게시. 최종독립ROI사용/한계/모듈계약은V224_REVIEW_KO.md와관련문서.
+- 사용자앱8876 작업0/모델미로드/CLI확인후본인PID38008재시작. 새PID16252 / exec session81562, Desktopcwd, 기존test-output/crop19-v22/project유지. HTTP200/v224/후보선택API/5장확인. 사용자탭임의새로고침없음.
+- GUI8886 최종near-edge Python PID20844/session9961,모델미로드, 프로젝트roi-ui-v224. 최종계측UI에서유효19/평균3.550nm/near-edge경고표시확인. UI오류없음. CUA roiTab224 id10 handoff.
+- 다음우선순위는위얇은층계측validity대조/첨부45도제한box실험. 38예측반복하지말고이어갈것. 종료까지약2시간남음, heartbeat계속유지. 마지막게시메타데이터는staging기록이며다음게시때포함한다.
+- 게시후최종스크린샷확인중IAB큰비교의오른쪽영상이일시적으로검게표시됨. API원본PNG는1587×1211/max225/비검정784387px로정상,JS로그오류없음. 이미지complete속성브라우저조회는2번시간초과. 테스트탭새로고침→저장30°영상다시선택→비교열기후정상수평영상표시확인/최종PNG저장. 원인확정아님, 추후이미지로딩·실패표시보완검토. 사용자8876탭은건드리지않음.
+
+### 05:50 KST 전후 — v2.2.5 contour validity 검증 완료, 게시 준비
+
+- SAM 없는 binary 띠에서도 false invalid 재현. 보간 contour 길이 vs 반올림 픽셀 샘플 validity의 기하 불일치. 같은 contour의 연속 interval coverage로 변경, 실제 invalid/unknown은 그대로, 길이·좌표 불변.
+- 4폭×6각도×3validity=72조건: target_valid 무효278→0/유효699→977, all_true진단977유효그대로, 명시적무효띠 무효523→340/유효454→637. 72조건모든원시길이/원본끝점동일. 0.02px무효교차차단회귀. 수식3px띠45°의binary측정3.53553px 등 rasterization 오차는 남음.
+- 기존실제SAM3출력 비교: 유효97/62/72→97/143/159, 무효3/88/91→3/7/4. 평균4/3.3321/4.1612→4/3.5298/4.2385px; 새로운정확도성공아님. 신규SAM추론0. 기존38회반복하지않음.
+- 새프로젝트roi-metrology-v225: 레이어없는선택후보3장회전3/3→잠정계측3/3→부분GT+계측6/6→ZIP. crop보호81/142/69px모두unknown검증. 기존roi-metrology-v224-final보존.
+- CSV/JSON valid_coverage_px/invalid_coverage_px, UI무효길이, 측정hash contour_validity_v3로기존측정만료. 회전hash그대로. 새패키지없음.
+- GUI8887 실제이전결과만료→GT없는재계측(mask22만): 유효19→38,무효21→2,교차없음125,평균3.7634224/중앙4.1208274nm,보정각−29.95847°. 생성1nm/px. 무효구간2.4504/3.8151px표시.
+- 실제GUI미검수GT차단→선택검수확인→실패재시도GT+계측2/2완료. 확인대화상자가열려navigation비활성인상태에서자동화클릭2회시간초과했으나앱오류아님; 대화상자확인후진행. JS오류없음. 영상비교양쪽정상확인, 이전검은미리보기근본원인미해결.
+- Python121 PASS25.218s, CSV보강후scope7 PASS1.905s, Node기존+prompt_batch PASS. Desktop최종검증/게시예정.
+- 테스트서버8887 PID21796/exec session29824, stagingcwd/test-output/contour-ui-v225(기존roi-ui-v224복사), 모델미로드. CUA contourTab225 id11 handoff. 증거 evidence-v225/rotation-and-validity.png. 모델/영상/JSON결과는미게시.
+- 상세V225_REVIEW_KO.md/관련모듈문서. 결과contour-validity-v225/before.json/after.json,roi-metrology-v225. 단회진단시간11.832→12.156s. 회사/전문가GT없음. 새실험중지시각07:39:53KST는아직도달하지않음.
+
+#### 다음 반복 후보
+
+1. 첨부45°ROI 분할 미해결: 방향 보조 사전정렬+좁은box/프로파일을 원본좌표복원과 함께 검토. 생성띠·공개무GT·첨부물질을구분할것. 스케일/주석을지운것만으로물질GT정확도성공으로간주하지말것.
+2. 비교미리보기 로드/실패 안내는추후보완가능. v224일시검은영상은API정상, 이번GUI정상이나원인확정아님.
+3. 같은72조건/기존38추론그대로재실행하지말것. 독립ROI일괄레시피는아직없고preset일괄과구분.
+4. 종료07:39:53KST(22:39:53UTC) 이후새실험중지·최종문서·heartbeat tem-v2-5비활성화. 지금예약유지.

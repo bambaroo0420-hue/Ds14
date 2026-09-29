@@ -78,6 +78,8 @@ class ScopeTests(unittest.TestCase):
             self.assertTrue(excluded)
             self.assertTrue(all(r['length_nm']=='' and float(r['raw_length_nm'])==40 for r in excluded))
             self.assertTrue(all(r['layer_id']=='' and r['scope_id']=='target' for r in rows))
+            self.assertTrue(all(float(r['valid_coverage_px'])==20 and float(r['invalid_coverage_px'])==0 for r in excluded))
+            self.assertTrue(all(r['valid_coverage_px']=='' for r in rows if r['status']=='no_intersection'))
 
     def test_missing_scope_no_fallback_and_undo_restore(self):
         c,m,_=self.prepare();p=self.api.project
