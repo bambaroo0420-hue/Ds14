@@ -1,0 +1,8 @@
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+python-multipart>=0.0.9
+numpy>=1.24
+Pillow>=10
+scipy>=1.10
+# Optional for OCR: easyocr and its local weights
+# Optional for SAM: torch, torchvision, segment-anything
