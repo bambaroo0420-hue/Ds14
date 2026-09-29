@@ -1,3 +1,16 @@
+// Decode off-screen first so a comparison is never presented as ready while
+// its image is still loading. This does not repair an incorrect server image.
+export function prepareComparisonImage(url,label,timeoutMs=15000){
+  return new Promise((resolve,reject)=>{
+    const im=new Image();let settled=false;
+    const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);im.onload=im.onerror=null;if(error){im.removeAttribute('src');reject(error)}else resolve(im)};
+    const timer=setTimeout(()=>finish(Error(`${label} 로딩 시간 초과입니다. 연결을 확인한 뒤 비교 버튼으로 재시도하세요.`)),timeoutMs);
+    im.onerror=()=>finish(Error(`${label}를 불러올 수 없습니다. 비교 버튼으로 재시도하세요.`));
+    im.onload=async()=>{try{if(im.decode)await im.decode();if(!im.naturalWidth||!im.naturalHeight)throw Error('empty image');finish()}catch(e){finish(Error(`${label} 디코딩 실패입니다. 비교 버튼으로 재시도하세요.`))}};
+    im.src=url;
+  });
+}
+
 export function mountMetrology(T) {
   const $=id=>document.getElementById(id);
   const auto=document.createElement('option');auto.value='auto';auto.textContent='자동: 단일 마스크 경계 / 여러 마스크 대표점';$('rotationMode').prepend(auto);$('rotationMode').value='auto';
@@ -11,7 +24,17 @@ export function mountMetrology(T) {
   const dialog=document.createElement('dialog');dialog.id='alignmentCompare';
   dialog.innerHTML='<div class="dialog-heading"><h2>원본 ↔ 회전 보정</h2><button id="closeAlignmentCompare">닫기</button></div><p id="alignmentCompareInfo"></p><div class="alignment-comparison"><figure><figcaption>원본 좌표계 · 기울어진 입력</figcaption><img id="alignmentBefore" alt="회전 전 원본"></figure><figure><figcaption>정렬 좌표계 · 회전 결과</figcaption><img id="alignmentAfter" alt="회전 보정 결과"></figure></div><p>원본은 보존됩니다. 선택 방식에 따라 SAM 경계·대응점·영상 주 방향을 사용합니다. GT·경계 보정은 필수가 아닙니다.</p>';
   document.body.append(dialog);$('closeAlignmentCompare').onclick=()=>dialog.close();
-  compare.onclick=()=>T.task(async()=>{if(!T.current)throw Error('이미지를 선택하세요.');const r=await T.api(`workflow/status/${T.current}`,null,'GET');if(!r.rotation||r.rotation_stale)throw Error('현재 입력으로 회전을 먼저 제안하세요.');$('alignmentBefore').src=`/api/images/${T.current}.png`;$('alignmentAfter').src=`/api/workflow/rotation/${T.current}.png?v=${T.state.revision}`;$('alignmentCompareInfo').textContent=`${T.state.images[T.current].name} · 보정각 ${r.rotation.transform.angle_deg.toFixed(4)}° · 잔차 ${residual(r.rotation)} · ${r.rotation.confirmed?'회전 확정':'회전 검토 필요'} ${(r.rotation.warnings||[]).join(' ')}`;dialog.showModal()});
+  compare.onclick=()=>T.task(async()=>{
+    if(!T.current)throw Error('이미지를 선택하세요.');
+    const iid=T.current,revision=T.state.revision,r=await T.api(`workflow/status/${iid}`,null,'GET');
+    if(!r.rotation||r.rotation_stale)throw Error('현재 입력으로 회전을 먼저 제안하세요.');
+    $('alignmentBefore').removeAttribute('src');$('alignmentAfter').removeAttribute('src');T.say('원본·회전 비교 영상을 불러오는 중입니다 (최대 15초).');
+    const [before,after]=await Promise.all([prepareComparisonImage(`/api/images/${iid}.png`,'원본 영상'),prepareComparisonImage(`/api/workflow/rotation/${iid}.png?v=${revision}`,'회전 영상')]);
+    if(T.current!==iid||T.state.revision!==revision)throw Error('영상/입력이 바뀌었습니다. 비교를 다시 여세요.');
+    $('alignmentBefore').src=before.src;$('alignmentAfter').src=after.src;
+    $('alignmentCompareInfo').textContent=`${T.state.images[iid].name} · 보정각 ${r.rotation.transform.angle_deg.toFixed(4)}° · 잔차 ${residual(r.rotation)} · ${r.rotation.confirmed?'회전 확정':'회전 검토 필요'} · 양쪽 영상 로드 완료 ${(r.rotation.warnings||[]).join(' ')}`;
+    dialog.showModal();
+  });
   function parsed(id,fallback){const value=$(id).value.trim();return value?JSON.parse(value):fallback}
   function rotationConfig(){return {scope_id:T.scopeId(),layer_id:+$('rotationLayer').value,edge:$('rotationEdge').value,mode:$('rotationMode').value,
     roi:parsed('rotationROI',null),points:parsed('rotationPoints',[]),target_angle:+$('rotationTarget').value,max_residual:+$('rotationResidual').value}}

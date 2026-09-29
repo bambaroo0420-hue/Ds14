@@ -28,9 +28,11 @@ class ROIReviews:
         touches=bool(crop_contacts(result['mask'],result.get('inference_domains',[])).any())
         warnings=['추론 ROI 가장자리 2 px 이내에 마스크가 있습니다. 절단 의심 영역을 2 px 확장해 GT/계측에서 미지정 처리합니다. 더 넓은 ROI로 재검토하세요.'] if touches else []
         if result.get('prompt_violations'):warnings.append(f"양성/음성 입력점 {len(result['prompt_violations'])}개가 결과와 맞지 않습니다. 다른 후보·점·box를 검토하세요.")
+        if result.get('roi_alignment'):
+            meta=result['roi_alignment'];warnings.append(f"실험적 ROI 사전정렬 {meta['angle_deg']:.3f}° 후 원본 좌표로 복원했습니다. 양성점 방향/box는 보조 입력이며 물질 경계·최종 계측 회전의 정답이 아닙니다.")
         return {'preview_token':token,'area':int(result['mask'].sum()),'saved':False,'crop_truncated':touches,
                 'mask_choice':result.get('mask_choice'),'multimask_scores':result.get('multimask_scores',[]),
-                'prompt_violations':result.get('prompt_violations',[]),'warnings':warnings}
+                'prompt_violations':result.get('prompt_violations',[]),'roi_alignment':result.get('roi_alignment'),'warnings':warnings}
     def require(self,token):
         r=self.items.get(token)
         if not r or time.monotonic()-r['time']>=900:

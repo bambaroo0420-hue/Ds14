@@ -224,3 +224,32 @@
 2. 비교미리보기 로드/실패 안내는추후보완가능. v224일시검은영상은API정상, 이번GUI정상이나원인확정아님.
 3. 같은72조건/기존38추론그대로재실행하지말것. 독립ROI일괄레시피는아직없고preset일괄과구분.
 4. 종료07:39:53KST(22:39:53UTC) 이후새실험중지·최종문서·heartbeat tem-v2-5비활성화. 지금예약유지.
+
+### 05:56 KST — v2.2.5 게시 완료
+
+- 기존 branch/PR #1 갱신: commit `a72dc79185ebcd5c4de7d0abfbab1d088dc7c1a5`, tree `1d965da2d2bafc0c766882c1672bde53fcf6880c`, parent `866abe4e0477a266314e32938863502bdbc4da63`. 소스17개 파일별읽기, 원격/로컬tree동일확인 후 nonforce 게시. fetch/update-ref 후 Git깨끗함, main미병합.
+- Desktop 최종 Python121 PASS24.520s/Node2종PASS/pip checkPASS, manifest150. 최종보고서V225_REVIEW_KO.md 포함. 원시길이불변·통계표본변화·SAM경계오차와rasterization한계구분.
+- 사용자앱8876 진행작업0/모델미로드/정확한CLI확인후본인PID16252재시작. 새PID30096/exec session61403, Desktopcwd/test-output/crop19-v22/project유지. HTTP200/v225/coverageUI/5장확인. 사용자탭새로고침안함.
+- GUI8887 PID21796/session29824 모델미로드; contourTab225 id11 handoff. 검수후재시도부분GT+계측2/2완료, 평균3.7634224228nm/중앙4.1208274291nm/유효38/무효2. GUI확인대화상자는앱내dialog였고자동화에서확인후정상진행.
+- 다음에는첨부45°사전정렬/좁은box검증 등 위후보로이어갈것. 아직05:56KST, 종료07:39:53KST까지약1시간44분, heartbeat계속유지. 마지막게시메타데이터는staging기록이며다음게시때포함한다.
+
+### 06:18 KST 전후 — v2.2.6 방향 보조 ROI 검증, 게시 준비
+
+- 양성점 직선fit ROI사전정렬+선택형box(0/6/18여백), 확률bilinear원본복원→모델threshold. 기본off, 독립ROI전용, 부모/seed미지원명시. alignedlogits재사용금지, 원본점QC/cropguard유지.
+- 실제SAM72비교(6사례×4방식×3후보,11cold61reuse,추론162.5213초). 추가hafnia는양성1개로skip;마지막skipJSON누락도구수정,기존실측72행보존. 같은추론반복하지않음.
+- 합성3px0/30/45° 최고3후보IoU nativebox .633803/.450742/.336994→alignedpoints .751880/.711538/.714695. box6 .763605/.640262/.739327. oracle값이며score선택시낮은값도존재. 전체표V226_REVIEW_KO.md.
+- 첨부TaOx box18후보1 면적29299/점위반0/서비스fit−44.9181잔차.8664;TiOxNy box6후보3 면적9653/점위반0이나분절/누락,fit−46.9182잔차6.114. 전문가GT없음/자동완성아님.
+- 최종API실제SAM4cold57.8563초,실험mask와IoU1,preview→accept→미배정scope→rotationproposal. 전부HTTP200은물질정확도증명아님. GT/scale/회전자동확정안함.
+- 실제GUI8888에서모델로드/ROI드래그/+3−2점/사전정렬box18/여백변경시미리보기저장차단/재예측/후보5미배정저장. 2예측1cold1reuse. 총78실제SAM(16cold62reuse).
+- GUI TaOx 후보5 ROI[70,131,428,467]/area22929/score약.925/점위반0이나 최종회전41.1896잔차6.97. 검토필요로미확정,약45°로자동성공처리하지않음. 입력ROI/점민감도반례. 문자보존비교창은OCR신규시험아님.
+- 비교창양쪽이미지load/decode/크기확인→open,실패/15초timeout/입력변경차단. 실제양쪽정상표시/JS오류없음. 이전검정preview원인확정아님.
+- staging128PythonPASS31.053초/Node기존+prompt_batch+metrology_loading PASS. Desktop동기화/게시예정. 새모델/패키지설치없음.
+- Desktop최종128PASS33.392초/Node3종PASS/pipcheckPASS. 옵션레이아웃CSS 캐시 갱신 query r1 추가. httpx testclient deprecation경고기록, 실행실패없음.
+- GUI8888 PID26636/exec38795, stagingtest-output/oriented-ui-v226,ViT-B CPU로드됨. CUAorientedTab226 id12 handoff. 증거evidence-v226/aligned-roi-preview.png,rotation-review-required.png.
+- 재현결과oriented-roi-v226/results.json(72),oriented-api-v226/results.json(4),별도oriented-ui-v226. 원본프로젝트/영상보존. 영상/모델/결과는GitHub미게시.
+
+#### 다음 반복 후보
+
+1. 첨부에서회전한fit불안정시수동두점/각mask대표점등기존회전기준과비교,선택후보의잘못된경계와영상방향추정을구분. 양성점사전정렬값을최종회전정답으로자동확정하지말기.
+2. 선택mask일괄실패격리/저장복원/내보내기 등 마무리검수. ROI일괄레시피는아직없음. 새기능범위확장보다회귀/제한문서화우선.
+3. 종료07:39:53KST(22:39:53UTC)새실험중지,최종MD/heartbeat tem-v2-5비활성화. 현재06:18전후로예약계속유지.

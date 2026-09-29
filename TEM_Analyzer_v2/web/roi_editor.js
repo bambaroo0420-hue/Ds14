@@ -10,6 +10,7 @@ class ROIEditor {
   this.el('roiReset').onclick=()=>this.fit();
   this.el('roiShowPoints').onchange=()=>this.draw();this.el('roiShowMask').onchange=()=>this.draw();
   this.el('roiMaskChoice').onchange=()=>this.draw();
+  this.el('roiAlignPositive').onchange=()=>this.draw();this.el('roiBoxMargin').oninput=()=>this.draw();
   this.el('roiRun').onclick=()=>this.run();this.el('roiAccept').onclick=()=>this.accept();this.el('roiDiscard').onclick=()=>{if(!this.busy){this.discard();this.draw()}};this.el('roiShowPreview').onchange=()=>this.draw();
   this.canvas.addEventListener('pointerdown',e=>this.down(e));
   this.canvas.addEventListener('pointermove',e=>this.move(e));
@@ -23,6 +24,7 @@ class ROIEditor {
   this.discard();this.imageId=imageId;this.parent=parent;this.image=image;this.points=[];this.box=null;this.drag=null;
   this.el('roiError').textContent='';
   this.el('roiMaskChoice').value='-1';
+  this.el('roiAlignPositive').checked=false;this.el('roiAlignPositive').disabled=parent!=null;this.el('roiBoxMargin').value=6;this.el('roiBoxMargin').disabled=parent!=null;
   if(parent==null){
    this.overlay=document.createElement('canvas');this.overlay.width=image.width;this.overlay.height=image.height;
    this.roi=[0,0,image.width,image.height];this.bounds=[...this.roi];this.el('roiTool').value='roi';
@@ -54,7 +56,7 @@ class ROIEditor {
   this.el('roiInfo').textContent=`ROI [${this.roi.join(', ')}] · 양성 ${this.points.filter(p=>p[2]).length} / 음성 ${this.points.filter(p=>!p[2]).length} · box ${this.box?1:0} · 휠 확대 / 보기·이동 드래그 / 우클릭 점 삭제`;
  }
 
- signature(){return JSON.stringify({image_id:this.imageId,parent:this.parent,roi:this.roi,points:this.points,box:this.box,mask_choice:+this.el('roiMaskChoice').value})}
+ signature(){const aligned=this.parent==null&&this.el('roiAlignPositive').checked;return JSON.stringify({image_id:this.imageId,parent:this.parent,roi:this.roi,points:this.points,box:this.box,mask_choice:+this.el('roiMaskChoice').value,align_positive:aligned,box_margin:aligned?+this.el('roiBoxMargin').value:0})}
  updateButtons(){this.el('roiAccept').disabled=this.busy||!this.preview;this.el('roiDiscard').disabled=this.busy||!this.preview;this.el('roiRun').disabled=this.busy;this.el('roiClose').disabled=this.busy}
  discard(){const old=this.preview;this.preview=null;this.previewOverlay=null;if(old)this.api('roi-previews/'+old.token,null,'DELETE').catch(()=>{});this.updateButtons()}
  async run(){

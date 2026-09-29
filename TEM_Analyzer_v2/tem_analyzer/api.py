@@ -145,7 +145,7 @@ def automatic(body:AutoIn):
     except (KeyError,ValueError,RuntimeError,MemoryError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
 
-class PromptIn(BaseModel):preview:bool=False;image_id:str;points:list[list[float]]=[];box:list[float]|None=None;roi:list[float]|None=None;parent:int|None=None;mode:str='extract';mask_choice:int=Field(default=-1,ge=-1,le=2)
+class PromptIn(BaseModel):preview:bool=False;image_id:str;points:list[list[float]]=[];box:list[float]|None=None;roi:list[float]|None=None;parent:int|None=None;mode:str='extract';mask_choice:int=Field(default=-1,ge=-1,le=2);align_positive:bool=False;box_margin:float=Field(default=0,ge=0,le=200)
 @app.post('/api/sam/prompt')
 def prompt(body:PromptIn):
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다.')
@@ -162,6 +162,10 @@ def prompt(body:PromptIn):
         project.assert_editable(parent)
         prior=load_prior(project,body.image_id,parent) if body.mode=='edit' else None
         choice={'mask_choice':body.mask_choice} if body.mask_choice!=-1 else {}
+        if body.align_positive:
+            if not body.roi or body.parent is not None or body.mode!='extract':raise ValueError('사전정렬은 부모 없는 독립 ROI에서만 지원합니다.')
+            choice.update(align_positive=True,box_margin=body.box_margin)
+        elif body.box_margin:raise ValueError('자동 box 여백은 사전정렬 옵션과 함께 사용하세요.')
         item=model.in_roi(im,body.roi,body.points,body.box,prior,**choice) if body.roi and prior else model.in_roi(im,body.roi,body.points,body.box,**choice) if body.roi else model.prompt(im,body.points,body.box,prior,**choice) if prior else model.prompt(im,body.points,body.box,**choice)
         if body.mode=='edit' and body.roi:
             x0,y0,x1,y1=map(int,body.roi);old=project.mask(body.image_id,body.parent);old[y0:y1,x0:x1]=item['mask'][y0:y1,x0:x1];item['mask']=old
@@ -173,8 +177,8 @@ def prompt(body:PromptIn):
             item['mask'] &= project.mask(body.image_id,body.parent)
             if not item['mask'].any():raise ValueError('부모 마스크 내부에 남은 영역이 없습니다. ROI와 점을 확인하세요.')
         if body.preview:
-            return roi_reviews.stage(body.image_id,body.parent,item,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice,'mode':body.mode})
-        return save_prediction(project,body.image_id,item,'edit-preview' if body.mode=='edit' else 'roi-refine' if body.roi else 'manual',body.parent,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice})
+            return roi_reviews.stage(body.image_id,body.parent,item,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice,'mode':body.mode,'align_positive':body.align_positive,'box_margin':body.box_margin})
+        return save_prediction(project,body.image_id,item,'edit-preview' if body.mode=='edit' else 'roi-refine' if body.roi else 'manual',body.parent,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice,'align_positive':body.align_positive,'box_margin':body.box_margin})
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
 

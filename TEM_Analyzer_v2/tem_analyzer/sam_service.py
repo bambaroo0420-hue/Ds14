@@ -96,7 +96,7 @@ class ModelService:
         violations=[index for index,(x,y,label) in enumerate(points) if bool(prob[min(h-1,int(np.floor(y+.5))),min(w-1,int(np.floor(x+.5)))]>=threshold)!=bool(label)]
         return dict(mask=prob>=threshold,score=float(scores[i]),logits=native,context=ctx,prior_source=origin,embedding_reused=cached,probability=prob,
                     mask_choice=i,multimask_scores=[float(s) for s in scores],prompt_violations=violations)
-    def in_roi(self,image,roi,points=None,box=None,prior=None,mask_choice=-1):
+    def in_roi(self,image,roi,points=None,box=None,prior=None,mask_choice=-1,align_positive=False,box_margin=0):
         if len(roi)!=4 or not np.isfinite(roi).all():raise ValueError('ROI 오류')
         if any(float(v)!=int(v) for v in roi):raise ValueError('추론 ROI는 정수 픽셀 경계로 지정하세요.')
         x0,y0,x1,y1=map(int,roi);h,w=image.shape[:2]
@@ -104,6 +104,18 @@ class ModelService:
         if any(len(p)!=3 or not(x0<=p[0]<x1 and y0<=p[1]<y1) for p in (points or [])):raise ValueError('모든 점은 ROI 안에 있어야 합니다.')
         if box is not None and (len(box)!=4 or not np.isfinite(box).all() or not(x0<=box[0]<box[2]<=x1 and y0<=box[1]<box[3]<=y1)):raise ValueError('box는 ROI 안에 있어야 합니다.')
         local=[[p[0]-x0,p[1]-y0,p[2]] for p in (points or [])];lb=[box[0]-x0,box[1]-y0,box[2]-x0,box[3]-y0] if box else None
+        if type(align_positive) is not bool or not np.isfinite(box_margin) or not 0<=box_margin<=200:raise ValueError('사전정렬 설정 오류')
+        if box_margin and not align_positive:raise ValueError('자동 좁은 box는 사전정렬 옵션과 함께 사용하세요.')
+        if align_positive:
+            if prior:raise ValueError('이전 마스크 seed의 사전정렬은 지원하지 않습니다. 독립 ROI를 사용하세요.')
+            from .algorithms.roi_alignment import prepare,restore
+            rgb,pp,bb,support,meta=prepare(image[y0:y1,x0:x1],local,lb,box_margin)
+            item=self.prompt(rgb,pp,bb,mask_choice=mask_choice)
+            prob=restore(item['probability'],support,meta,(y1-y0,x1-x0));threshold=self.cfg.get('mask_threshold',.5)
+            full=np.zeros((h,w),bool);full[y0:y1,x0:x1]=prob>=threshold;item['mask']=full
+            meta['original_roi']=[x0,y0,x1,y1];item['roi_alignment']=meta;item['inference_domains']=[[x0,y0,x1,y1]]
+            item['prompt_violations']=[k for k,(x,y,label) in enumerate(points or []) if bool(full[min(h-1,int(np.floor(y+.5))),min(w-1,int(np.floor(x+.5)))])!=bool(label)]
+            item.pop('logits',None);item.pop('context',None);item.pop('probability',None);return item
         pr=None
         if prior and prior.get('mask') is not None:pr={'mask':prior['mask'][y0:y1,x0:x1]}
         kwargs={'mask_choice':mask_choice} if mask_choice!=-1 else {}

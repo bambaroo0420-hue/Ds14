@@ -84,3 +84,9 @@ ROI 밖 결과는 0이나 이를 배경 GT로 해석하지 않습니다. 내부 
 `multimask_scores`는 SAM 예측값이지 실측 IoU가 아닙니다. `prompt_violations`는 입력 점 배열의 0-based index이며 결과가 라벨과 다를 때 기록합니다.
 프롬프트 준수 판정은 가까운 pixel centre를 사용합니다. ROI 제한/제외 영역 적용 이후 전문가 정확도 검사를 대체하지 않습니다.
 독립 preview의 parent는 null입니다. accept 전 mask 파일/후보 생성 없음, 이미지/제외/전처리/모델이 바뀌면 만료됩니다.
+
+v2.2.6 prompt `align_positive` 기본 false, `box_margin` 0~200px. 양성점 최소2/직선 방향성 검사, parent/seed/ROI없음은 거부합니다.
+여백0은 자동box없음; 양수일 때 길이 방향30px와 법선 여백으로 box 생성. 수동box와 동시에 사용하지 못합니다.
+`roi_alignment`의 local_to_aligned/aligned_to_local은 원본 ROI 내부좌표 행렬입니다. original_roi에 전역 offset을 보존합니다.
+원본 크기 mask로 저장하며 bilinear 확률 복원→모델threshold, support 밖0. 원본 점 위반을 다시 검사하고 aligned logits/context는 저장하지 않습니다.
+사전정렬 fit/score/경고는 전문가 GT나 최종 회전 확정의 대체물이 아닙니다. 기존 inference_domains의 unknown 정책을 유지합니다.

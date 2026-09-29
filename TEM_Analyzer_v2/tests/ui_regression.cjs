@@ -55,6 +55,8 @@ const run=s=>vm.runInContext(s,context);
  run('roiEditor.points=[[2,3,1]]');elements.roiMaskChoice.value='2';await run('roiEditor.run()');
  assert.equal(payload.parent,null);assert.equal(payload.mask_choice,2);assert(!elements.roiAccept.disabled);
  elements.roiMaskChoice.value='1';elements.roiMaskChoice.onchange();assert(elements.roiAccept.disabled,'changing native candidate requires a fresh preview');
+ elements.roiAlignPositive.checked=true;elements.roiBoxMargin.value='18';await run('roiEditor.run()');assert.equal(payload.align_positive,true);assert.equal(payload.box_margin,18);
+ elements.roiBoxMargin.value='6';elements.roiBoxMargin.oninput();assert(elements.roiAccept.disabled,'changing aligned box invalidates preview');
  elements.roiClose.onclick();assert(!elements.roiDialog.open);
 
  // Image navigation restores the selected image's scale and its own draft points.

@@ -80,3 +80,8 @@ v2.2.4 독립 ROI는 기존 `ROIEditor.open(imageId, null, image)`와 `/api/sam/
 일반 부모 ROI edit는 바깥을 보존하므로 새 도메인을 붙이지 않습니다. crop-only 예측과 혼동하지 마세요.
 mask 파일은 불변으로 두고 GT validity/회전 기준/Gradient+DP guard를 바꿉니다. 규칙 변경 시 fingerprint의 roi_cut_guard_version도 올리세요.
 기본 SAM 후보 번호는 0/1/2(API), 1/2/3(UI)입니다. single-mask 모델에는 없는 번호를 조용히 대체하지 않습니다.
+
+v2.2.6 `roi_alignment.prepare/restore`는 독립 ROI 입력만 사전정렬합니다. positive line 방향이며 최종 계측 회전이 아닙니다.
+확률을 original ROI로 역보간하고 모델 threshold를 적용합니다. aligned logits/context는 폐기해 좌표가 다른 다음 예측에 재사용하지 않습니다.
+원본 candidate와 crop guard 계약은 그대로 유지하세요. 자동 box는 SAM 힌트이지 mask 강제 clipping 영역이 아닙니다.
+UI 비교창은 `prepareComparisonImage` load/decode를 기다립니다. 실패/timeout 이후 늦은 callback이 창을 다시 열지 않도록 단일 settle을 유지하세요.

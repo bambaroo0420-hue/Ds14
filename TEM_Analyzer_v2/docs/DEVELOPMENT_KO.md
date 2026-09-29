@@ -69,6 +69,12 @@ v2.2.3 프롬프트 검수 gate 모사 테스트는 `node tests/ui_prompt_batch.
 
 ## 수정 시 주의
 
+v2.2.6 사전정렬 회귀: `python -B -m unittest discover -s tests -p test_roi_alignment.py`.
+`node tests/ui_metrology_loading.cjs`로 비교 이미지 실패/timeout/늦은 완료를 검사합니다. 실제 브라우저 영상 표시 검증도 필요합니다.
+`tools/compare_oriented_roi.py --source <roi-compare 결과폴더> --checkpoint <pth> --output <새 폴더>`는 실제 SAM 비교입니다.
+`tools/validate_oriented_roi_api.py --source <roi-compare 결과폴더> --experiment <oriented-roi 결과폴더> --checkpoint <pth> --output <새 폴더>`는 최종 API와 후보 저장/선택회전까지 실행합니다.
+원본을 보존하며 결과폴더는 새 경로를 지정합니다. box여백/점/ROI에 민감하므로 단일 성공 사례만으로 기본값을 자동화하지 마세요.
+
 계측 validity 회귀: `python -B -m unittest discover -s tests -p test_contour_validity.py`.
 `tools/validate_contour_validity.py --output <새 JSON> --project <기존 계측 프로젝트>`는 모델 호출 없이 대조군과 저장된 실제 mask를 검사합니다.
 진단용 all_true 결과를 프로젝트 GT에 적용하지 않습니다. 원시 길이/좌표가 동일해야 하며 실제 무효 구간은 계속 차단되어야 합니다.
