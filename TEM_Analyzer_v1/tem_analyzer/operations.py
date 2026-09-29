@@ -8,7 +8,8 @@ def roi_pixels(roi,w,h):
 
 def excluded(shape,template):
     h,w=shape; out=np.zeros((h,w),bool)
-    for roi in [template['scale_roi']]+template['text_rois']:
+    for roi in [template.get('scale_roi')]+template['text_rois']:
+        if roi is None: continue
         x0,y0,x1,y1=roi_pixels(roi,w,h);out[y0:y1,x0:x1]=True
     return out
 

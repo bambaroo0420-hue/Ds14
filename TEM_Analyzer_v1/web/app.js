@@ -19,7 +19,7 @@ function sizeCanvas(){canvas.width=host.clientWidth;canvas.height=host.clientHei
 function rect(r,color){if(!r)return;ctx.strokeStyle=color;ctx.lineWidth=2/(fit*zoom);ctx.strokeRect(r[0],r[1],r[2]-r[0],r[3]-r[1])}
 function normRect(r){return [Math.min(r[0],r[2]),Math.min(r[1],r[3]),Math.max(r[0],r[2]),Math.max(r[1],r[3])]}
 function redraw(){ctx.clearRect(0,0,canvas.width,canvas.height);if(!base.complete||!base.naturalWidth)return;ctx.save();ctx.translate(panX,panY);ctx.scale(fit*zoom,fit*zoom);ctx.drawImage(base,0,0);if(tint){ctx.save();ctx.globalAlpha=.5;ctx.drawImage(tint,0,0);ctx.restore()}if(showCov&&coverage.width){ctx.save();ctx.globalAlpha=.4;ctx.drawImage(coverage,0,0);ctx.restore()}
- let t=state.templates?.[state.selected_template];if(t){rect(t.scale_roi.map((v,i)=>v*(i%2?base.height:base.width)),'#4ce3df');for(let q of t.text_rois)rect(q.map((v,i)=>v*(i%2?base.height:base.width)),'#ee7a8a')}
+ let t=state.templates?.[state.selected_template];if(t){if(t.scale_roi)rect(t.scale_roi.map((v,i)=>v*(i%2?base.height:base.width)),'#4ce3df');for(let q of t.text_rois)rect(q.map((v,i)=>v*(i%2?base.height:base.width)),'#ee7a8a')}
  rect(box,'#f5d65d');rect(roi,'#a479ff');rect(scaleDraft,'#36e5e0');for(let r of textDraft)rect(r,'#ee7a8a');if(drag?.kind==='rect')rect(normRect([...drag.start,...drag.now]),'#fff');
  for(let p of points){ctx.fillStyle=p[2]?'#20ff83':'#ff5471';ctx.beginPath();ctx.arc(p[0],p[1],5/(fit*zoom),0,Math.PI*2);ctx.fill()}
  for(let s of strokes){ctx.beginPath();ctx.lineWidth=2*s.radius;ctx.strokeStyle=s.mode==='add'?'#39ef9c':'#fc6d83';ctx.globalAlpha=.6;s.points.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.stroke();ctx.globalAlpha=1}
@@ -34,8 +34,19 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.query
 $('upload').onchange=e=>task(async()=>{for(let f of e.target.files){let form=new FormData();form.append('file',f);let r=await fetch('/api/images',{method:'POST',body:form});if(!r.ok)throw Error((await r.json()).detail);current=(await r.json()).image_id}await refresh()});
 $('deleteImage').onclick=()=>task(async()=>{if(!current)return;if(!confirm('현재 이미지와 해당 후보를 삭제할까요?'))return;await api('images/'+current,null,'DELETE');current=null;await refresh()});
 $('imageSelect').onchange=async e=>{current=e.target.value;await refresh()};$('candidateSelect').onchange=loadMask;
-$('templateSelect').onchange=e=>task(async()=>{await api('templates/select',{id:e.target.value});await refresh()});
-$('saveTemplate').onclick=()=>task(async()=>{if(!base.naturalWidth)throw Error('이미지를 먼저 열어주세요');let previous=state.templates[state.selected_template];let id=prompt('템플릿 ID (현재 ID 입력 시 덮어쓰기)',previous.id);if(!id)return;let norm=r=>r.map((v,i)=>Math.max(0,Math.min(1,v/(i%2?base.height:base.width))));let t={id,name:$('templateName').value||id,scale_roi:scaleDraft?norm(scaleDraft):previous.scale_roi,text_rois:[...previous.text_rois,...textDraft.map(norm)]};await api('templates',t);scaleDraft=null;textDraft=[];await refresh();say('템플릿 저장됨')});
+$('templateSelect').onchange=e=>task(async()=>{await api('templates/select',{id:e.target.value});scaleDraft=null;textDraft=[];await refresh();redraw()});
+function currentTemplateDraft(){
+ let previous=state.templates[state.selected_template];
+ let norm=r=>r.map((v,i)=>Math.max(0,Math.min(1,v/(i%2?base.height:base.width))));
+ return {id:previous.id,name:$('templateName').value||previous.name,scale_roi:scaleDraft?norm(scaleDraft):previous.scale_roi,text_rois:[...previous.text_rois,...textDraft.map(norm)]};
+}
+async function storeTemplate(t){await api('templates',t);scaleDraft=null;textDraft=[];await refresh();redraw();say('템플릿 저장됨')}
+$('saveTemplate').onclick=()=>task(()=>storeTemplate(currentTemplateDraft()));
+$('newTemplate').onclick=()=>task(async()=>{let name=prompt('새 템플릿 이름','새 템플릿');if(!name?.trim())return;await storeTemplate({id:'tpl_'+Date.now(),name:name.trim(),scale_roi:null,text_rois:[]})});
+$('copyTemplate').onclick=()=>task(async()=>{let t=currentTemplateDraft();let name=prompt('복사할 템플릿 이름',t.name+' 복사');if(!name?.trim())return;t.id='tpl_'+Date.now();t.name=name.trim();await storeTemplate(t)});
+$('removeScale').onclick=()=>task(async()=>{let t=currentTemplateDraft();t.scale_roi=null;await storeTemplate(t)});
+$('removeText').onclick=()=>task(async()=>{let t=currentTemplateDraft();t.text_rois=[];await storeTemplate(t)});
+$('clearTemplate').onclick=()=>task(async()=>{let t=currentTemplateDraft();t.scale_roi=null;t.text_rois=[];await storeTemplate(t)});
 $('manualScale').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let raw=prompt('스케일바: x1,y1,x2,y2,길이,단위(nm 또는 um)');if(!raw)return;let q=raw.split(',').map(x=>x.trim());if(q.length!==6)throw Error('6개 값을 입력하세요');await api('scale/manual',{image_id:current,a:[+q[0],+q[1]],b:[+q[2],+q[3]],length:+q[4],unit:q[5]});await refresh()});
 $('autoScale').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let dir=prompt('로컬 EasyOCR 가중치 폴더','models/easyocr');if(!dir)return;let r=await api('scale/detect',{image_id:current,ocr_dir:dir,language:'en'});await refresh();say(r.nm_per_px?'스케일 제안값 확인 후 확정하세요':'스케일 검출 실패. 수동 입력을 사용하세요')});
 $('confirmScale').onclick=()=>task(async()=>{await api('scale/confirm',{image_id:current});await refresh()});

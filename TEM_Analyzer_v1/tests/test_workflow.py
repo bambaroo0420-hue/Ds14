@@ -44,6 +44,20 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(restored.candidate(self.id,edit['id'])['instance_id'],'cell_1')
         self.assertTrue(restored.mask(self.id,edit['id']).any())
 
+    def test_empty_template_can_be_created_and_reloaded(self):
+        c=self.client
+        r=c.post('/api/templates',json={'id':'empty','name':'빈 템플릿','scale_roi':None,'text_rois':[]})
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertIsNone(r.json()['scale_roi'])
+        stats=c.get(f'/api/coverage/{self.id}/stats')
+        self.assertEqual(stats.status_code,200,stats.text)
+        self.assertEqual(stats.json()['excluded'],0)
+        r=c.post('/api/scale/detect',json={'image_id':self.id})
+        self.assertEqual(r.status_code,400)
+        self.assertIn('스케일 ROI',r.json()['detail'])
+        from tem_analyzer.storage import Project
+        self.assertIsNone(Project(self.temp.name).state['templates']['empty']['scale_roi'])
+
     def test_missing_model_and_unimplemented_are_explicit(self):
         r=self.client.post('/api/sam/automatic',json={'image_id':self.id,'grid':16})
         self.assertEqual(r.status_code,400)

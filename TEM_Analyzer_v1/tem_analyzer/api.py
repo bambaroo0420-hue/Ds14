@@ -51,7 +51,7 @@ def remove(image_id:str):
     except KeyError as e:fail(e)
 
 class TemplateIn(BaseModel):
-    id:str;name:str;scale_roi:list[float];text_rois:list[list[float]]=[]
+    id:str;name:str;scale_roi:list[float]|None=None;text_rois:list[list[float]]=[]
 @app.post('/api/templates')
 def template(body:TemplateIn):
     try:return project.update_template(body.model_dump())
@@ -78,6 +78,7 @@ class ScaleAuto(BaseModel):image_id:str;ocr_dir:str='models/easyocr';language:st
 def scale_detect(body:ScaleAuto):
     try:
         im=project.image(body.image_id);tpl=project.state['templates'][project.state['selected_template']]
+        if tpl.get('scale_roi') is None: raise ValueError('스케일 ROI를 드래그하여 저장한 뒤 OCR을 실행하세요.')
         x0,y0,x1,y1=roi_pixels(tpl['scale_roi'],im.shape[1],im.shape[0])
         # EasyOCR is optional and configured for local weights, with download disabled.
         from .ocr import read_words

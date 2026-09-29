@@ -92,6 +92,6 @@ class Project:
         def roi(r):
             if len(r)!=4 or not all(isinstance(v,(int,float)) and 0<=v<=1 for v in r) or r[0]>=r[2] or r[1]>=r[3]: raise ValueError('ROI는 정규화 좌표 [x0,y0,x1,y1]이어야 합니다.')
             return [float(v) for v in r]
-        clean=dict(id=tid,name=str(item.get('name') or tid),scale_roi=roi(item['scale_roi']),text_rois=[roi(r) for r in item.get('text_rois',[])])
+        clean=dict(id=tid,name=str(item.get('name') or tid),scale_roi=roi(item['scale_roi']) if item.get('scale_roi') is not None else None,text_rois=[roi(r) for r in item.get('text_rois',[])])
         self.state['templates'][tid]=clean;self.state['selected_template']=tid;self.save()
         return clean
