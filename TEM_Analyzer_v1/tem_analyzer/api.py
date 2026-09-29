@@ -50,6 +50,15 @@ def remove(image_id:str):
     try:project.delete_image(image_id);return {'ok':True}
     except KeyError as e:fail(e)
 
+@app.get('/api/thumbnails/{image_id}.jpg')
+def thumbnail(image_id:str):
+    try:
+        project.require_image(image_id)
+        with Image.open(project.root/'images'/f'{image_id}.png') as im:
+            im.thumbnail((240,160));out=io.BytesIO();im.convert('RGB').save(out,format='JPEG',quality=80)
+        return Response(out.getvalue(),media_type='image/jpeg')
+    except KeyError as e:fail(e)
+
 class TemplateIn(BaseModel):
     id:str;name:str;scale_roi:list[float]|None=None;text_rois:list[list[float]]=[]
 @app.post('/api/templates')
@@ -69,11 +78,24 @@ def scale_manual(body:ScaleManual):
     try:
         project.require_image(body.image_id)
         nm=scale_from_points(body.a,body.b,body.length,body.unit)
-        project.state['scale'][body.image_id]=dict(nm_per_px=nm,bar=[body.a,body.b],confirmed=True,source='manual');project.save()
+        size=project.state['images'][body.image_id]
+        if any(not (0<=p[0]<=size['width'] and 0<=p[1]<=size['height']) for p in [body.a,body.b]):raise ValueError('바 좌표가 이미지 밖입니다.')
+        project.state['scale'][body.image_id]=dict(nm_per_px=nm,px_per_nm=1/nm,bar=[body.a,body.b],pixel_length=float(np.linalg.norm(np.array(body.a)-body.b)),length=body.length,unit=body.unit,confirmed=True,source='manual');project.save()
         return project.state['scale'][body.image_id]
     except (KeyError,ValueError) as e:fail(e)
 
 class ScaleAuto(BaseModel):image_id:str;ocr_dir:str='models/easyocr';language:str='en'
+
+class ScaleBarIn(BaseModel):image_id:str;roi:list[float]|None=None
+@app.post('/api/scale/bar')
+def scale_bar(body:ScaleBarIn):
+    from .calibration import bar_candidates
+    try:
+        im=project.image(body.image_id)
+        roi=body.roi if body.roi is not None else project.state['templates'][project.state['selected_template']].get('scale_roi')
+        return {'candidates':bar_candidates(im,roi)}
+    except (KeyError,ValueError) as e:fail(e)
+
 @app.post('/api/scale/detect')
 def scale_detect(body:ScaleAuto):
     try:
@@ -128,6 +150,7 @@ def prompt(body:PromptIn):
         item=model.in_roi(im,body.roi,body.points,body.box) if body.roi else model.prompt(im,body.points,body.box)
         if body.roi and body.parent is not None:
             item['mask'] &= project.mask(body.image_id,body.parent)
+            if not item['mask'].any():raise ValueError('부모 마스크 내부에 남은 영역이 없습니다. ROI와 점을 확인하세요.')
         return project.put_candidate(body.image_id,item['mask'],'roi-refine' if body.roi else 'manual',item['score'],body.parent,{'points':body.points,'box':body.box,'roi':body.roi})
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
@@ -138,6 +161,16 @@ def mask(image_id:str,candidate_id:int):
     except KeyError as e:fail(e)
 
 class Duplicate(BaseModel):image_id:str;candidate_id:int
+class CandidateName(BaseModel):image_id:str;candidate_id:int;name:str
+@app.post('/api/candidates/name')
+def candidate_name(body:CandidateName):
+    try:
+        item=project.candidate(body.image_id,body.candidate_id)
+        if item is None:raise ValueError('후보가 없습니다.')
+        if not body.name.strip():raise ValueError('이름을 입력하세요.')
+        item['name']=body.name.strip()[:120];project.save();return item
+    except (KeyError,ValueError) as e:fail(e)
+
 @app.post('/api/candidates/duplicate')
 def duplicate(body:Duplicate):
     try:

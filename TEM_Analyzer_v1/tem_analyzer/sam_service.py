@@ -82,10 +82,13 @@ class ModelService:
         return dict(mask=self._refine(image,masks[idx]),score=float(scores[idx]))
 
     def in_roi(self,image,roi,points=None,box=None):
+        if len(roi)!=4 or not np.isfinite(roi).all():raise ValueError('잘못된 ROI')
         x0,y0,x1,y1=map(int,roi);h,w=image.shape[:2]
         if not (0<=x0<x1<=w and 0<=y0<y1<=h):raise ValueError('잘못된 ROI')
         crop=image[y0:y1,x0:x1]
-        local=[[p[0]-x0,p[1]-y0,p[2]] for p in (points or []) if x0<=p[0]<x1 and y0<=p[1]<y1]
+        if any(len(p)!=3 or not np.isfinite(p).all() or p[2] not in (0,1) or not (x0<=p[0]<x1 and y0<=p[1]<y1) for p in (points or [])):raise ValueError('모든 점은 ROI 안에 있어야 합니다.')
+        if box is not None and (len(box)!=4 or not np.isfinite(box).all() or not (x0<=box[0]<box[2]<=x1 and y0<=box[1]<box[3]<=y1)):raise ValueError('box는 ROI 안에 있어야 합니다.')
+        local=[[p[0]-x0,p[1]-y0,p[2]] for p in (points or [])]
         local_box=[box[0]-x0,box[1]-y0,box[2]-x0,box[3]-y0] if box else None
         item=self.prompt(crop,local,local_box)
         full=np.zeros((h,w),bool);full[y0:y1,x0:x1]=item['mask'];item['mask']=full

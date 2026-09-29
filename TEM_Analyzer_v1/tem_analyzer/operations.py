@@ -27,32 +27,24 @@ def brush(mask,strokes):
 
 def scale_from_points(a,b,length,unit='nm'):
     length=float(length)
-    if length<=0 or unit not in ('nm','um','µm'):raise ValueError('양의 길이와 nm/um 단위를 입력하세요.')
+    if not np.isfinite(length) or length<=0 or unit not in ('nm','um','µm'):raise ValueError('양의 길이와 nm/um 단위를 입력하세요.')
+    if len(a)!=2 or len(b)!=2 or not np.isfinite([a,b]).all():raise ValueError('바 양 끝 좌표를 확인하세요.')
     d=float(np.linalg.norm(np.asarray(a,float)-np.asarray(b,float)))
     if d<2:raise ValueError('스케일바 양 끝이 너무 가깝습니다.')
     return length*(1000 if unit!='nm' else 1)/d
 
 def detect_scale(image,roi,words):
     """Suggest a horizontal bright bar with nearby OCR text; user must confirm."""
-    h,w=image.shape[:2];x0,y0,x1,y1=roi_pixels(roi,w,h)
-    gray=np.asarray(Image.fromarray(image).convert('L'))[y0:y1,x0:x1]
-    if gray.size==0:raise ValueError('스케일 ROI가 비어 있습니다.')
-    candidates=[]
-    for y,row in enumerate(gray):
-        threshold=max(175,float(np.percentile(row,93)))
-        binary=row>=threshold
-        starts=np.flatnonzero(np.diff(np.r_[False,binary,False].astype(int))==1)
-        ends=np.flatnonzero(np.diff(np.r_[False,binary,False].astype(int))==-1)
-        for a,b in zip(starts,ends):
-            if b-a>=max(8,gray.shape[1]*.08):candidates.append((b-a,y,a,b))
+    from .calibration import bar_candidates
+    candidates=bar_candidates(image,roi)
     if not candidates:return dict(words=words,bar=None,nm_per_px=None,confirmed=False)
-    _,y,a,b=max(candidates)
     length=None;unit=None
     for item in words:
         match=re.search(r'(\d+(?:[.,]\d+)?)\s*(nm|µm|um)',item['text'],re.I)
         if match:length=float(match.group(1).replace(',','.'));unit=match.group(2).lower();break
-    bar=[[x0+int(a),y0+int(y)],[x0+int(b),y0+int(y)]]
-    return dict(words=words,bar=bar,nm_per_px=scale_from_points(*bar,length,unit) if length else None,confirmed=False)
+    bar=candidates[0]['bar']
+    nm=scale_from_points(*bar,length,unit) if length else None
+    return dict(words=words,bar=bar,nm_per_px=nm,px_per_nm=1/nm if nm else None,length=length,unit=unit,confirmed=False,source='ocr-proposal')
 
 def layer_coverage(project,image_id):
     h,w=project.image(image_id).shape[:2]
