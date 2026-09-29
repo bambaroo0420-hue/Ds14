@@ -9,6 +9,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from .preprocessing import effective_template, model_input, restrict_mask, apply_one
 from .storage import Project
 from .sam_service import ModelService
 from .operations import excluded, brush, scale_from_points, detect_scale, layer_coverage, roi_pixels
@@ -81,6 +82,8 @@ def scale_manual(body:ScaleManual):
         size=project.state['images'][body.image_id]
         if any(not (0<=p[0]<=size['width'] and 0<=p[1]<=size['height']) for p in [body.a,body.b]):raise ValueError('바 좌표가 이미지 밖입니다.')
         project.state['scale'][body.image_id]=dict(nm_per_px=nm,px_per_nm=1/nm,bar=[body.a,body.b],pixel_length=float(np.linalg.norm(np.array(body.a)-body.b)),length=body.length,unit=body.unit,confirmed=True,source='manual');project.save()
+        record=project.state.get('preprocessing',{}).get(body.image_id)
+        if record is not None:record.update(scale_status='manual',reviewed=False,last_error=None);project.save()
         return project.state['scale'][body.image_id]
     except (KeyError,ValueError) as e:fail(e)
 
@@ -107,7 +110,10 @@ def scale_detect(body:ScaleAuto):
         words=read_words(im[y0:y1,x0:x1],body.ocr_dir,body.language)
         for word in words:word['box']=[word['box'][0]+x0,word['box'][1]+y0,word['box'][2]+x0,word['box'][3]+y0]
         item=detect_scale(im,tpl['scale_roi'],words)
-        project.state['scale'][body.image_id]=item;project.save();return item
+        project.state['scale'][body.image_id]=item
+        record=project.state.get('preprocessing',{}).get(body.image_id)
+        if record is not None:record.update(reviewed=False,scale_requested=True,scale_status='proposed' if item.get('nm_per_px') else 'failed',last_error=None if item.get('nm_per_px') else 'OCR 실패: 수동 스케일을 저장하세요.')
+        project.save();return item
     except (KeyError,ValueError,ImportError) as e:fail(e)
 
 class ScaleConfirm(BaseModel):image_id:str
@@ -130,11 +136,11 @@ class AutoIn(BaseModel):image_id:str;grid:int=Field(default=16,ge=2,le=32);pred_
 def automatic(body:AutoIn):
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다.')
     try:
-        im=project.image(body.image_id);tpl=project.state['templates'][project.state['selected_template']]
+        im=model_input(project,body.image_id);tpl=effective_template(project,body.image_id)
         items=model.automatic(im,body.grid,body.pred_iou,body.stability,body.nms,excluded(im.shape[:2],tpl))
         saved=[]
         for item in items:
-            c=project.put_candidate(body.image_id,item['mask'],'grid',item['score'],prompts={'grid':body.grid,'stability':item['stability'],'bbox':item['bbox']})
+            c=project.put_candidate(body.image_id,restrict_mask(project,body.image_id,item['mask']),'grid',item['score'],prompts={'grid':body.grid,'stability':item['stability'],'bbox':item['bbox']})
             saved.append(c)
         return {'created':saved,'count':len(saved),'grid_points_max':body.grid**2}
     except (KeyError,ValueError,RuntimeError,MemoryError) as e:fail(ValueError(str(e)))
@@ -145,13 +151,13 @@ class PromptIn(BaseModel):image_id:str;points:list[list[float]]=[];box:list[floa
 def prompt(body:PromptIn):
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다.')
     try:
-        im=project.image(body.image_id)
+        im=model_input(project,body.image_id)
         if body.parent is not None and project.candidate(body.image_id,body.parent) is None:raise ValueError('부모 후보가 없습니다.')
         item=model.in_roi(im,body.roi,body.points,body.box) if body.roi else model.prompt(im,body.points,body.box)
         if body.roi and body.parent is not None:
             item['mask'] &= project.mask(body.image_id,body.parent)
             if not item['mask'].any():raise ValueError('부모 마스크 내부에 남은 영역이 없습니다. ROI와 점을 확인하세요.')
-        return project.put_candidate(body.image_id,item['mask'],'roi-refine' if body.roi else 'manual',item['score'],body.parent,{'points':body.points,'box':body.box,'roi':body.roi})
+        return project.put_candidate(body.image_id,restrict_mask(project,body.image_id,item['mask']),'roi-refine' if body.roi else 'manual',item['score'],body.parent,{'points':body.points,'box':body.box,'roi':body.roi})
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
 
@@ -222,7 +228,7 @@ def coverage(image_id:str):
 def coverage_stats(image_id:str):
     try:
         labels,overlap=layer_coverage(project,image_id)
-        template=project.state['templates'][project.state['selected_template']]
+        template=effective_template(project,image_id)
         valid=~excluded(labels.shape,template)
         return dict(unassigned=int(((labels==0)&valid).sum()),overlap=int((overlap&valid).sum()),excluded=int((~valid).sum()),total=int(labels.size))
     except KeyError as e:fail(e)
@@ -236,8 +242,8 @@ class PrepareGrid(BaseModel):
 def prepare_grid(body:PrepareGrid):
     from .prompts import grid_points
     try:
-        im=project.image(body.image_id)
-        template=project.state['templates'][project.state['selected_template']]
+        im=model_input(project,body.image_id)
+        template=effective_template(project,body.image_id)
         points=grid_points(im.shape[:2],body.grid,excluded(im.shape[:2],template))
         return {'points':points,'count':len(points),'inference_run':False}
     except (KeyError,ValueError) as e:fail(e)
@@ -253,9 +259,9 @@ class PrepareML(BaseModel):
 def prepare_ml(body:PrepareML):
     from .prompts import ml_points,validate_points
     try:
-        im=project.image(body.image_id)
+        im=model_input(project,body.image_id)
         validate_points(body.existing,im.shape[1],im.shape[0])
-        template=project.state['templates'][project.state['selected_template']]
+        template=effective_template(project,body.image_id)
         points=ml_points(im,excluded(im.shape[:2],template),body.existing,body.count,body.clusters,body.min_distance)
         return {'points':points,'count':len(points),'method':'unsupervised_kmeans_intensity_texture','inference_run':False}
     except (KeyError,ValueError) as e:fail(e)
@@ -275,7 +281,7 @@ def run_prepared(body:PreparedRun):
     from .prompts import validate_points
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다.')
     try:
-        im=project.image(body.image_id);h,w=im.shape[:2]
+        im=model_input(project,body.image_id);h,w=im.shape[:2]
         validate_points(body.auto_points,w,h);validate_points(body.manual_points,w,h)
         if any(len(p)!=3 or p[2] not in (0,1) for p in body.manual_points):raise ValueError('수동점은 [x,y,0 또는 1] 형식이어야 합니다.')
         if body.manual_mode not in ('object','independent'):raise ValueError('잘못된 수동점 실행 방식')
@@ -286,16 +292,16 @@ def run_prepared(body:PreparedRun):
             if body.box or any(p[2]==0 for p in manual):raise ValueError('음성점·box는 한 객체로 묶기 모드에서 사용하세요.')
             auto += [p[:2] for p in manual];manual=[]
         if not auto and not manual and body.box is None:raise ValueError('Grid/ML/수동점 또는 box를 먼저 준비하세요.')
-        template=project.state['templates'][project.state['selected_template']]
+        template=effective_template(project,body.image_id)
         prepared={'auto_points':auto,'manual_points':body.manual_points,'box':body.box,'manual_mode':body.manual_mode}
         result=[]
         if auto:
             items=model.automatic(im,pred_iou=body.pred_iou,stability=body.stability,nms=body.nms,exclude=excluded((h,w),template),prepared_points=auto)
             for item in items:
-                result.append(project.put_candidate(body.image_id,item['mask'],'prepared-auto',item['score'],prompts={**prepared,'stability':item['stability']}))
+                result.append(project.put_candidate(body.image_id,restrict_mask(project,body.image_id,item['mask']),'prepared-auto',item['score'],prompts={**prepared,'stability':item['stability']}))
         if manual or body.box:
             item=model.prompt(im,manual,body.box)
-            result.append(project.put_candidate(body.image_id,item['mask'],'manual',item['score'],prompts=prepared))
+            result.append(project.put_candidate(body.image_id,restrict_mask(project,body.image_id,item['mask']),'manual',item['score'],prompts=prepared))
         project.state.setdefault('prepared_prompts',{})[body.image_id]=prepared;project.save()
         return {'count':len(result),'created':result}
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
@@ -327,3 +333,75 @@ def layer_mask(image_id:str,layer_id:int):
             if c['layer_id']==layer_id:mask|=project.mask(image_id,c['id'])
         return png((mask*255).astype('uint8'))
     except KeyError as e:fail(e)
+
+
+class BatchPreprocess(BaseModel):
+    template:TemplateIn
+    image_ids:list[str]|None=None
+    apply_regions:bool=True
+    apply_scale:bool=True
+    length:float|None=None
+    unit:str='nm'
+
+@app.post('/api/preprocessing/apply')
+def batch_preprocess(body:BatchPreprocess):
+    if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다. 완료 후 적용하세요.')
+    try:
+        ids=list(dict.fromkeys(body.image_ids if body.image_ids is not None else project.state['images']))
+        if not ids:raise ValueError('적용할 이미지를 먼저 로드하세요.')
+        if not body.apply_regions and not body.apply_scale:raise ValueError('영역 적용 또는 스케일 검출을 선택하세요.')
+        for image_id in ids:project.require_image(image_id)
+        if body.apply_scale:
+            if body.template.scale_roi is None:raise ValueError('스케일 ROI를 지정하세요.')
+            scale_from_points([0,0],[10,0],body.length or 0,body.unit)
+        tpl=project.update_template(body.template.model_dump())
+        results={}
+        for image_id in ids:
+            try:results[image_id]=apply_one(project,image_id,tpl,body.apply_regions,body.apply_scale,body.length,body.unit)
+            except (OSError,ValueError) as e:
+                item=project.state.setdefault('preprocessing',{}).setdefault(image_id,{})
+                item.update(reviewed=False,scale_requested=body.apply_scale,scale_status='error',last_error=str(e))
+                results[image_id]=item
+        project.save()
+        return {'results':results,'count':len(results)}
+    except (KeyError,ValueError) as e:fail(e)
+    finally:model_lock.release()
+
+class ReviewPreprocess(BaseModel):image_id:str
+@app.post('/api/preprocessing/confirm')
+def confirm_preprocess(body:ReviewPreprocess):
+    record=project.state.get('preprocessing',{}).get(body.image_id)
+    if not record:raise HTTPException(400,'현재 이미지에 먼저 적용하세요.')
+    if record.get('scale_status')=='error':raise HTTPException(400,'처리 오류를 해결한 뒤 다시 적용하세요.')
+    if record.get('scale_requested'):
+        scale=project.state['scale'].get(body.image_id)
+        if record.get('scale_status')=='failed' or not scale or not scale.get('nm_per_px'):
+            raise HTTPException(400,'스케일 검출 실패: 양 끝과 실제 길이를 입력해 스케일 저장 후 검수하세요.')
+        scale['confirmed']=True
+    record['reviewed']=True;project.save();return record
+
+@app.get('/api/preprocessing/{image_id}/preview.png')
+def preprocessing_preview(image_id:str,mode:str='overlay',thumbnail:bool=False):
+    from PIL import ImageDraw
+    try:
+        original=project.image(image_id)
+        record=project.state.get('preprocessing',{}).get(image_id,{})
+        if mode not in ('original','overlay','processed'):raise ValueError('잘못된 미리보기 모드')
+        im=Image.fromarray(model_input(project,image_id) if mode=='processed' else original).convert('RGBA')
+        if mode=='overlay':
+            overlay=Image.new('RGBA',im.size,(0,0,0,0));draw=ImageDraw.Draw(overlay)
+            tpl=record.get('template')
+            line=max(1,round(im.width/500))
+            if tpl:
+                for roi in [tpl.get('scale_roi')]+tpl['text_rois']:
+                    if roi is not None:
+                        x0,y0,x1,y1=roi_pixels(roi,*im.size)
+                        if x1>x0 and y1>y0:draw.rectangle([x0,y0,x1-1,y1-1],fill=(235,65,115,85),outline=(255,80,130,255),width=line)
+            scale=project.state['scale'].get(image_id,{})
+            # A failed batch must not present a previously saved line as a fresh detection.
+            if scale.get('bar') and record.get('scale_status') not in ('failed','error'):
+                draw.line([tuple(p) for p in scale['bar']],fill=(255,180,30,255),width=line+1)
+            im=Image.alpha_composite(im,overlay)
+        if thumbnail:im.thumbnail((260,170))
+        return png(np.asarray(im.convert('RGB')))
+    except (KeyError,ValueError) as e:fail(e)

@@ -1,6 +1,7 @@
 const $=id=>document.getElementById(id);
 let state={},current=null,base=new Image(),mask=new Image(),coverage=new Image(),showCov=false,tint=null,points=[],box=null,roi=null,strokes=[],activeStroke=null,drag=null,scaleDraft=null,textDraft=[],zoom=1,panX=0,panY=0,fit=1;
 let gridPoints=[],mlPoints=[],displayMode='candidate',overlayVersion=0,loadedImage=null;
+let preprocessingPreview=null,preprocessingVersion=0,activePage='images';
 let candidateSort={key:'id',direction:1},scaleBar=null,barProposals=[],imageSwitchBusy=false;
 const imageDrafts={};
 const canvas=$('canvas'),ctx=canvas.getContext('2d'),host=$('canvasHost');
@@ -23,10 +24,11 @@ async function refresh(){
   if(loadedImage)imageDrafts[loadedImage]={points,gridPoints,mlPoints,box,roi,strokes,scaleDraft,textDraft};
   const d=imageDrafts[current]||{};points=d.points||[];gridPoints=d.gridPoints||[];mlPoints=d.mlPoints||[];box=d.box||null;roi=d.roi||null;strokes=d.strokes||[];scaleDraft=d.scaleDraft||null;textDraft=d.textDraft||[];tint=null;showCov=false;overlayVersion++;await loadImage();restoreScale();
  }
- renderGallery();renderCandidates();
+ renderGallery();renderCandidates();renderBatchResults();await loadPreprocessingPreview();
  $('modelInfo').textContent=JSON.stringify(state.model||{status:'모델 미로드'},null,2);
  $('scaleInfo').textContent=state.scale[current]?.nm_per_px?`${(1/state.scale[current].nm_per_px).toFixed(6)} px/nm · ${state.scale[current].nm_per_px.toFixed(6)} nm/px (${state.scale[current].confirmed?'확정':'제안·검수 필요'})`:'스케일 미확정';
  if(displayMode==='layer')await loadLayer();else await loadMask(false);
+ if(['failed','error'].includes(state.preprocessing?.[current]?.scale_status))$('scaleInfo').textContent+=' · 일괄 검출 실패: 수동 재설정 필요';
  updatePromptCount();redraw();
 }
 function escapeHtml(s){return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;')}
@@ -63,8 +65,8 @@ function coord(e){let r=host.getBoundingClientRect(),s=fit*zoom;return [(e.clien
 function sizeCanvas(){canvas.width=host.clientWidth;canvas.height=host.clientHeight;canvas.style.width=canvas.width+'px';canvas.style.height=canvas.height+'px';redraw()}
 function rect(r,color){if(!r)return;ctx.strokeStyle=color;ctx.lineWidth=2/(fit*zoom);ctx.strokeRect(r[0],r[1],r[2]-r[0],r[3]-r[1])}
 function normRect(r){return [Math.min(r[0],r[2]),Math.min(r[1],r[3]),Math.max(r[0],r[2]),Math.max(r[1],r[3])]}
-function redraw(){ctx.clearRect(0,0,canvas.width,canvas.height);if(!base.complete||!base.naturalWidth)return;ctx.save();ctx.translate(panX,panY);ctx.scale(fit*zoom,fit*zoom);ctx.drawImage(base,0,0);if($('showMasks').checked&&tint){ctx.save();ctx.globalAlpha=.5;ctx.drawImage(tint,0,0);ctx.restore()}if($('showMasks').checked&&showCov&&coverage.width){ctx.save();ctx.globalAlpha=.4;ctx.drawImage(coverage,0,0);ctx.restore()}
- let t=state.templates?.[state.selected_template];if(t){if(t.scale_roi)rect(t.scale_roi.map((v,i)=>v*(i%2?base.height:base.width)),'#4ce3df');for(let q of t.text_rois)rect(q.map((v,i)=>v*(i%2?base.height:base.width)),'#ee7a8a')}
+function redraw(){ctx.clearRect(0,0,canvas.width,canvas.height);if(!base.complete||!base.naturalWidth)return;ctx.save();ctx.translate(panX,panY);ctx.scale(fit*zoom,fit*zoom);ctx.drawImage(activePage==='images'&&preprocessingPreview?preprocessingPreview:base,0,0);if($('showMasks').checked&&tint){ctx.save();ctx.globalAlpha=.5;ctx.drawImage(tint,0,0);ctx.restore()}if($('showMasks').checked&&showCov&&coverage.width){ctx.save();ctx.globalAlpha=.4;ctx.drawImage(coverage,0,0);ctx.restore()}
+ let t=state.templates?.[state.selected_template];if(t&&!(activePage==='images'&&state.preprocessing?.[current])){if(t.scale_roi)rect(t.scale_roi.map((v,i)=>v*(i%2?base.height:base.width)),'#4ce3df');for(let q of t.text_rois)rect(q.map((v,i)=>v*(i%2?base.height:base.width)),'#ee7a8a')}
  if($('showPrompts').checked){rect(box,'#f5d65d');rect(roi,'#a479ff');}rect(scaleDraft,'#36e5e0');for(let r of textDraft)rect(r,'#ee7a8a');if(drag?.kind==='rect')rect(normRect([...drag.start,...drag.now]),'#fff');
  if($('showPrompts').checked){for(let [list,color] of [[gridPoints,'#4ce3df'],[mlPoints,'#bc8dff']]){ctx.fillStyle=color;for(let p of list){ctx.beginPath();ctx.arc(p[0],p[1],3/(fit*zoom),0,Math.PI*2);ctx.fill()}}
  for(let p of points){ctx.fillStyle=p[2]?'#20ff83':'#ff5471';ctx.beginPath();ctx.arc(p[0],p[1],5/(fit*zoom),0,Math.PI*2);ctx.fill()}
@@ -78,7 +80,7 @@ canvas.addEventListener('pointerup',e=>{if(!drag)return;if(drag.kind==='scale_li
 canvas.addEventListener('wheel',e=>{e.preventDefault();let [x,y]=coord(e),factor=e.deltaY<0?1.15:1/1.15;zoom=Math.max(.15,Math.min(12,zoom*factor));panX=e.offsetX-x*fit*zoom;panY=e.offsetY-y*fit*zoom;redraw()},{passive:false});
 $('clearMarks').onclick=()=>{gridPoints=[];mlPoints=[];points=[];box=null;roi=null;strokes=[];textDraft=[];scaleDraft=null;updatePromptCount();redraw()};
 $('zoomIn').onclick=()=>{zoom*=1.2;redraw()};$('zoomOut').onclick=()=>{zoom/=1.2;redraw()};$('resetView').onclick=()=>{if(base.naturalWidth){fit=Math.min(host.clientWidth/base.width,host.clientHeight/base.height);zoom=1;panX=(host.clientWidth-base.width*fit)/2;panY=(host.clientHeight-base.height*fit)/2;redraw()}};
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.page).classList.add('active')});
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.page).classList.add('active');activePage=b.dataset.page;redraw()});
 $('upload').onchange=e=>task(async()=>{for(let f of e.target.files){let form=new FormData();form.append('file',f);let r=await fetch('/api/images',{method:'POST',body:form});if(!r.ok)throw Error((await r.json()).detail);current=(await r.json()).image_id}await refresh()});
 $('deleteImage').onclick=()=>task(async()=>{if(!current)return;if(!confirm('현재 이미지와 해당 후보를 삭제할까요?'))return;await api('images/'+current,null,'DELETE');current=null;await refresh()});
 $('imageSelect').onchange=e=>switchImage(e.target.value);$('candidateSelect').onchange=()=>task(async()=>{strokes=[];await loadMask()});$('layerSelect').onchange=()=>task(()=>loadLayer());$('showLayer').onclick=()=>task(()=>loadLayer());
@@ -149,12 +151,31 @@ function updateScalePreview(){
  $('barPixels').textContent=d?`바 길이: ${d.toFixed(3)} px`:'바 길이: 미지정';
  $('scalePreview').textContent=d>=2&&nm>0?`계산 미리보기: ${(d/nm).toFixed(6)} px/nm · ${(nm/d).toFixed(6)} nm/px`:'';
 }
-function restoreScale(){const s=state.scale[current];barProposals=[];$('barSelect').innerHTML='<option value="">검출 전</option>';$('scaleLength').value=s?.length||'';$('scaleUnit').value=s?.unit==='um'||s?.unit==='µm'?'um':'nm';setScaleBar(s?.bar||null);if(s?.bar&&s.nm_per_px&&!s.length){$('scaleLength').value=s.nm_per_px*Math.hypot(s.bar[1][0]-s.bar[0][0],s.bar[1][1]-s.bar[0][1]);updateScalePreview()}}
+function restoreScale(){const saved=state.scale[current],r=state.preprocessing?.[current];const s=['failed','error'].includes(r?.scale_status)?null:saved;barProposals=[];$('barSelect').innerHTML='<option value="">검출 전</option>';$('scaleLength').value=s?.length||'';$('scaleUnit').value=s?.unit==='um'||s?.unit==='µm'?'um':'nm';setScaleBar(s?.bar||null);if(s?.bar&&s.nm_per_px&&!s.length){$('scaleLength').value=s.nm_per_px*Math.hypot(s.bar[1][0]-s.bar[0][0],s.bar[1][1]-s.bar[0][1]);updateScalePreview()}}
 $('scaleLength').oninput=updateScalePreview;$('scaleUnit').onchange=updateScalePreview;
 for(const id of ['barX1','barY1','barX2','barY2'])$(id).oninput=()=>{const vals=['barX1','barY1','barX2','barY2'].map(id=>$(id).value);scaleBar=vals.every(v=>v!==''&&Number.isFinite(+v))?[[+vals[0],+vals[1]],[+vals[2],+vals[3]]]:null;updateScalePreview();redraw()};
 $('drawScaleROI').onclick=()=>{$('tool').value='scale';say('스케일바와 숫자가 포함된 영역을 드래그하세요.')};
 $('drawScaleLine').onclick=()=>{$('tool').value='scale_line';say('스케일바의 한쪽 끝에서 반대쪽 끝까지 드래그하세요.')};
 $('detectBar').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let r=await api('scale/bar',{image_id:current,roi:scaleDraft?scaleDraft.map((v,i)=>Math.max(0,Math.min(1,v/(i%2?base.height:base.width)))):state.templates[state.selected_template].scale_roi});barProposals=r.candidates;$('barSelect').innerHTML=barProposals.map((b,i)=>`<option value="${i}">${i+1}: ${b.pixel_length} px · ${b.polarity==='bright'?'밝은 바':'어두운 바'}</option>`).join('');setScaleBar(barProposals[0]?.bar||null);say(barProposals.length?'주황색 선이 실제 바와 맞는지 확인하고 길이를 입력하세요.':'바를 찾지 못했습니다. 양 끝을 직접 드래그하세요.')});
 $('barSelect').onchange=()=>setScaleBar(barProposals[+$('barSelect').value]?.bar||null);
+function batchStatus(record){if(!record)return '미적용';if(record.scale_status==='failed'||record.scale_status==='error')return '검출·처리 실패';return record.reviewed?'검수 완료':'검수 대기'}
+function renderBatchResults(){
+ const ids=Object.keys(state.images),records=state.preprocessing||{},applied=ids.filter(id=>records[id]),reviewed=applied.filter(id=>records[id].reviewed),failed=applied.filter(id=>['failed','error'].includes(records[id].scale_status));
+ $('batchSummary').textContent=`전체 ${ids.length} · 적용 ${applied.length} · 검수 완료 ${reviewed.length} · 실패 ${failed.length}`;
+ $('batchResults').innerHTML=ids.map(id=>{const r=records[id],s=state.scale[id],scaleFailed=['failed','error'].includes(r?.scale_status),scaleLabel=s?.nm_per_px?`${(1/s.nm_per_px).toFixed(4)} px/nm · ${s.nm_per_px.toFixed(4)} nm/px${scaleFailed?' (이전 값)':''}`:'스케일 없음';return `<button class="batch-item ${id===current?'selected':''}" data-batch-image="${id}"><img loading="lazy" src="/api/preprocessing/${id}/preview.png?thumbnail=true&mode=${$('batchView').value||'overlay'}&v=${Date.now()}" alt="">${escapeHtml(state.images[id].name)}<br><strong class="${scaleFailed?'batch-failed':r?.reviewed?'batch-reviewed':''}">${batchStatus(r)}</strong> · ${r?.excluded_pixels||0} px 제외<br>${scaleLabel}${r?.bar_candidates?.length>1?'<br>바 후보 여러 개: 검출 위치 확인':''}</button>`}).join('');
+ const r=records[current];$('batchCurrentStatus').textContent=r?`${batchStatus(r)} · ${r.regions_applied?'제외 영역 적용됨':'제외 영역 미적용'}${r.last_error?' · '+r.last_error:''}`:'현재 이미지 미적용';
+ $('batchConfirm').disabled=!r||r.reviewed;$('batchNext').disabled=!ids.some(id=>records[id]&&!records[id].reviewed);
+}
+async function loadPreprocessingPreview(){const token=++preprocessingVersion;preprocessingPreview=null;const mode=$('batchView').value||'overlay';if(!current||!state.preprocessing?.[current]||mode==='original'){redraw();return}const id=current;const im=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('적용 결과 미리보기를 읽지 못했습니다.'));img.src=`/api/preprocessing/${id}/preview.png?mode=${mode}&v=${Date.now()}`});if(token===preprocessingVersion&&id===current){preprocessingPreview=im;redraw()}}
+async function applyBatch(onlyCurrent){
+ if(!current)throw Error('이미지를 먼저 로드하세요');
+ const button=onlyCurrent?$('batchApplyCurrent'):$('batchApply');button.disabled=true;
+ try{const result=await api('preprocessing/apply',{template:currentTemplateDraft(),image_ids:onlyCurrent?[current]:null,apply_regions:$('batchRegions').checked,apply_scale:$('batchScale').checked,length:+$('scaleLength').value||null,unit:$('scaleUnit').value});scaleDraft=null;textDraft=[];await refresh();restoreScale();say(`${result.count}개 이미지 적용 완료. 결과 목록에서 확인하세요.`)}finally{button.disabled=false}
+}
+$('batchApply').onclick=()=>task(()=>applyBatch(false));$('batchApplyCurrent').onclick=()=>task(()=>applyBatch(true));
+$('batchResults').onclick=e=>{const b=e.target.closest('[data-batch-image]');if(b)switchImage(b.dataset.batchImage)};
+$('batchView').onchange=()=>task(async()=>{renderBatchResults();await loadPreprocessingPreview()});
+$('batchConfirm').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');await api('preprocessing/confirm',{image_id:current});await refresh()});
+$('batchNext').onclick=()=>{const ids=Object.keys(state.images),i=ids.indexOf(current),ordered=[...ids.slice(i+1),...ids.slice(0,i+1)],next=ordered.find(id=>state.preprocessing?.[id]&&!state.preprocessing[id].reviewed);if(next)return switchImage(next)};
 const roiEditor=new ROIEditor({api,onSaved:async item=>{displayMode='candidate';await refresh();$('candidateSelect').value=item.id;await loadMask();say('재분할 후보 #'+item.id+' 저장됨')}});
 new ResizeObserver(sizeCanvas).observe(host);refresh().catch(e=>say(e.message));

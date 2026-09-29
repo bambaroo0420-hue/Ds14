@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TEM Analyzer</title><link rel="stylesheet" href="/web/style.css?v=1.3"></head><body>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TEM Analyzer</title><link rel="stylesheet" href="/web/style.css?v=1.4"></head><body>
 <header><strong>TEM Analyzer</strong><span id="status">로컬 프로젝트 준비 중</span><select id="imageSelect"></select><button id="deleteImage">이미지 삭제</button></header>
 <nav><button data-page="images" class="active">1 이미지·스케일</button><button data-page="sam">2 SAM·레이어</button><button data-page="boundary">3 경계·GT</button><button data-page="measure">4 계측</button><button data-page="settings">5 설정</button></nav>
 <main><section class="workspace"><div class="canvasbar"><label>입력 방식 <select id="tool"><option value="view">보기·이동</option><option value="scale_line">스케일바 양 끝 드래그</option><option value="scale">스케일 ROI 드래그</option><option value="text">글씨 제외 ROI 드래그</option><option value="box">SAM box 드래그</option><option value="positive">양성점 클릭</option><option value="negative">음성점 클릭</option><option value="brush_add">브러시 추가</option><option value="brush_remove">브러시 삭제</option></select></label><label>브러시 px <input id="radius" type="number" min="1" max="200" value="8"></label><label><input id="showPrompts" type="checkbox" checked>점·box 보기</label><label><input id="showMasks" type="checkbox" checked>마스크 보기</label><button id="clearMarks">입력 지우기</button><button id="zoomOut">−</button><button id="zoomIn">＋</button><button id="resetView">화면 맞춤</button></div><div id="canvasHost"><canvas id="canvas"></canvas></div><small id="cursor">좌표: -</small></section>
@@ -15,7 +15,15 @@
 <p id="barPixels">바 길이: 미지정</p><label>바가 나타내는 실제 길이 <input id="scaleLength" type="number" min="0" step="any" placeholder="예: 50"></label><label>단위 <select id="scaleUnit"><option value="nm">nm</option><option value="um">µm</option></select></label>
 <p id="scalePreview"></p><button id="manualScale" class="primary">스케일 계산·저장</button>
 <details><summary>OCR 보조 (선택 사항)</summary><label>로컬 EasyOCR 폴더 <input id="ocrDir" value="models/easyocr"></label><button id="autoScale">OCR·바 자동 제안</button><button id="confirmScale">제안 스케일 확정</button><p>OCR 없이도 바 검출 + 실제 길이 입력으로 계산할 수 있습니다. OCR은 저장한 템플릿 ROI를 사용합니다.</p></details>
-<p id="scaleInfo">스케일 미확정</p></details></div>
+<p id="scaleInfo">스케일 미확정</p></details>
+<details open><summary>전체 이미지 일괄 적용·검수</summary>
+<label class="batch-check"><input id="batchRegions" type="checkbox" checked> 글씨·스케일 영역 지우기 (분석용)</label><label class="batch-check"><input id="batchScale" type="checkbox" checked> 이미지별 스케일바 재검출</label>
+<p>현재 템플릿과 드래그한 영역을 저장해 적용합니다. 위 실제 길이·단위를 모든 이미지에 공통 사용합니다. 바에 적힌 길이가 다른 이미지는 개별 수정하세요.</p>
+<button id="batchApply" class="primary">전체 이미지에 일괄 적용</button><button id="batchApplyCurrent">현재 이미지에만 다시 적용</button>
+<p>원본은 보존됩니다. 적용한 영역은 분석용 이미지에서 검정색으로 채우고 SAM 결과에서도 제외합니다. 기존 후보는 유지하며 새 분할부터 반영됩니다.</p>
+<label>적용 결과 보기 <select id="batchView"><option value="overlay">원본 + 제외 영역·스케일바</option><option value="processed">글씨 제거 후 분석용 이미지</option><option value="original">원본</option></select></label>
+<p id="batchSummary"></p><div id="batchResults"></div><p id="batchCurrentStatus"></p><button id="batchConfirm">현재 이미지 검수 확정</button><button id="batchNext">다음 미검수 이미지</button>
+<p>분홍색=분석 제외 영역, 주황색=스케일바. 검출 실패는 수동 스케일 저장 후 확정하세요. 템플릿 수정 후 다시 적용해야 분석에 반영됩니다.</p></details></div>
 <div id="sam" class="page"><h2>SAM 분할·레이어</h2>
 <details><summary>SAM 모델 설정</summary>
 <label>체크포인트 <input id="checkpoint" placeholder="/models/sam_vit_h.pth"></label>
@@ -52,4 +60,4 @@
 <dialog id="roiDialog" aria-labelledby="roiTitle"><div class="dialog-heading"><h2 id="roiTitle">선택 후보 내부 재분할</h2><button id="roiClose">닫기</button></div><p>선택 후보 주변을 확대한 독립 편집창입니다. ROI와 양성·음성점 또는 box를 지정하세요. 결과는 부모 마스크 내부로 제한해 새 후보로 저장합니다.</p>
 <div class="canvasbar"><select id="roiTool"><option value="positive">양성점</option><option value="negative">음성점</option><option value="roi">ROI 드래그</option><option value="box">SAM box 드래그</option><option value="view">보기·이동</option></select><button id="roiClear">점·box 초기화</button><button id="roiReset">화면 맞춤</button><label><input id="roiShowPoints" type="checkbox" checked>점 보기</label><label><input id="roiShowMask" type="checkbox" checked>부모 마스크 보기</label></div>
 <div id="roiHost"><canvas id="roiCanvas"></canvas></div><p id="roiInfo"></p><p id="roiError" role="status"></p><button id="roiRun" class="primary">이 프롬프트로 재분할·새 후보 저장</button></dialog>
-<div id="message" role="status"></div><script src="/web/roi_editor.js?v=1.3"></script><script src="/web/app.js?v=1.3"></script></body></html>
+<div id="message" role="status"></div><script src="/web/roi_editor.js?v=1.4"></script><script src="/web/app.js?v=1.4"></script></body></html>
