@@ -8,25 +8,187 @@
 - 임시 미리보기는 15분 동안 유지되며 최대 4개입니다. 서버 재시작 또는 부모/모델/전처리 변경 후에는 다시 실행해야 저장할 수 있습니다.
 - 설치 후 기존 서버를 종료하고 새 폴더에서 다시 실행하세요. 브라우저도 새로고침해야 합니다.
 
-# TEM Analyzer v2.0.0
+## 프로그램 개요
 
 TEM 원본 해상도에서 SAM 후보 생성 → 기존 마스크 수정 → 레이어 확정 → 공유 경계 보정 → GT 출력까지 수행하는 로컬 도구입니다. `TEM_Analyzer_v1`과 별도 폴더/프로젝트로 실행합니다.
 
-## 설치와 실행
+## 설치와 실행: Windows 로컬·회사망
 
-Python 3.10 이상을 권장합니다.
+**SAM 코드, Python 패키지, 모델 가중치는 서로 다른 준비물입니다.** `install_windows.bat`는 기본 UI 패키지만 설치합니다. SAM·OCR까지 사용하려면 아래 절차가 필요합니다. 명령은 압축을 푼 `TEM_Analyzer_v2` 폴더에서 PowerShell로 실행하세요.
 
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux/macOS: source .venv/bin/activate
-python -m pip install -r requirements.txt
-python run.py
+| 준비물 | v2 ZIP에 포함? | 준비 방법 |
+|---|---|---|
+| 공식 SAM Python 소스 | 포함 | `adaptation_backend/vendor/segment-anything` 사용. git clone 불필요 |
+| torch + torchvision | 미포함 | CPU/GPU에 맞는 한 쌍을 pip 또는 로컬 wheel로 설치 |
+| SAM ViT-B/L/H 체크포인트 | 미포함 | 아래 `.pth` 중 사용할 모델 다운로드 |
+| EasyOCR Python 패키지 | 미포함, OCR 사용 시 필요 | `requirements-ocr.txt`로 설치 |
+| OCR 검출·영어 인식 가중치 | 미포함, OCR 사용 시 필요 | ZIP 2개를 풀어 `models/easyocr`에 `.pth` 배치 |
+
+### 1. Python과 실행 환경
+
+예시는 **Windows 64-bit + Python 3.11** 기준입니다. 준비 PC와 회사 PC의 OS·CPU 아키텍처·Python minor 버전을 맞추세요. 회사 서버가 Linux라면 Linux 환경에서 wheel을 준비해야 합니다. Windows용 `.venv`를 Linux로 복사해서 사용할 수 없습니다.
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-브라우저에서 `http://127.0.0.1:8765`를 엽니다. Windows에서는 `install_windows.bat`, `start_windows.bat`를 사용할 수 있습니다. 기본 실행은 로컬 주소에만 바인딩합니다. 앱이 이미지나 추론 결과를 외부 서비스에 전송하지 않습니다. 회사 환경에서는 승인된 wheel/모델 파일을 미리 준비하세요.
+이후 모든 명령도 같은 `.venv` Python으로 실행합니다. 가상환경 활성화나 PowerShell 실행 정책 변경은 필요하지 않습니다.
 
-SAM 사용 시 장치에 맞는 **torch + torchvision**을 별도로 설치해야 합니다. 공식 SAM Python 소스는 `adaptation_backend/vendor/segment-anything`에 포함되어 있으므로 별도 git 다운로드는 필요하지 않습니다. SAM 가중치는 포함되어 있지 않습니다. OCR은 선택 사항이며 EasyOCR 및 로컬 가중치가 필요합니다. OCR 자동 다운로드는 꺼져 있습니다.
+### 2. torch·torchvision 설치
+
+**GPU가 없는 로컬 PC / CPU로 먼저 확인할 경우:**
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+```
+
+**NVIDIA GPU 서버:** [PyTorch 공식 설치 선택기](https://pytorch.org/get-started/locally/)에서 해당 OS / Pip / Python / 지원 CUDA 조합을 선택하세요. 출력 명령의 `pip`를 `.\.venv\Scripts\python.exe -m pip`로 바꿔 실행합니다. `torch`와 `torchvision`을 **동일 명령·동일 CPU/CUDA 배포 경로**에서 함께 설치하세요. torchaudio는 Analyzer에 필요하지 않습니다. 특정 CUDA 버전을 GPU 정보 없이 일괄 지정하지 않습니다.
+
+```powershell
+nvidia-smi
+.\.venv\Scripts\python.exe -c "import torch, torchvision; print('torch:',torch.__version__); print('torchvision:',torchvision.__version__); print('CUDA runtime:',torch.version.cuda); print('CUDA available:',torch.cuda.is_available())"
+```
+
+CPU 설치에서 `CUDA available: False`는 정상입니다. GPU로 실행하려면 True여야 합니다. CUDA wheel, GPU 세대, NVIDIA 드라이버가 맞아야 하며 Windows wheel과 Linux wheel도 구분해야 합니다.
+
+### 3. SAM 로컬 소스 사용과 체크포인트
+
+Analyzer는 다음 폴더의 SAM을 자동으로 불러옵니다. **앱만 실행할 때 별도의 `pip install segment-anything`은 필요하지 않습니다.**
+
+`adaptation_backend/vendor/segment-anything/segment_anything`
+
+일반 Python 코드에서도 `import segment_anything`을 쓰고 싶다면 선택적으로 설치합니다. 아래는 로컬 폴더 설치이며 GitHub 접속을 요구하지 않습니다. 1단계의 setuptools/wheel이 먼저 필요합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --no-index --no-deps --no-build-isolation .\adaptation_backend\vendor\segment-anything
+```
+
+[Meta 공식 SAM 체크포인트 안내](https://github.com/facebookresearch/segment-anything#model-checkpoints)의 원본 파일을 사용하세요.
+
+| 화면에서 선택할 모델 | 다운로드 | 저장 위치 예시 |
+|---|---|---|
+| `vit_b` | [sam_vit_b_01ec64.pth](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth) | `models/sam_vit_b_01ec64.pth` |
+| `vit_l` | [sam_vit_l_0b3195.pth](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth) | `models/sam_vit_l_0b3195.pth` |
+| `vit_h` | [sam_vit_h_4b8939.pth](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth) | `models/sam_vit_h_4b8939.pth` |
+
+이미 받은 체크포인트가 있으면 그대로 사용합니다. 3개 모두 받을 필요는 없습니다. CPU에서 설치 확인을 시작할 때는 ViT-B가 상대적으로 부담이 적습니다. UI의 체크포인트 칸에는 실제 파일 경로, 모델 칸에는 해당 variant를 입력합니다.
+
+**Hugging Face만 접속 가능한 경우:** 현재 Analyzer는 원본 SAM `.pth`의 state_dict를 받습니다. [facebook/sam-vit-huge](https://huggingface.co/facebook/sam-vit-huge)는 Transformers용 배포이므로 `model.safetensors`/`pytorch_model.bin`을 이름만 `.pth`로 바꿔 넣으면 안 됩니다. 원본 `.pth`가 그대로 올라간 승인된 배포처를 사용하거나 공식 원본을 외부에서 받아 반입하세요. 학습 adaptation bundle은 학습 당시 기본 SAM의 SHA-256과 같아야 합니다.
+
+SAM 소스 import 확인(가중치는 아직 로드하지 않음):
+
+```powershell
+.\.venv\Scripts\python.exe -c "import tem_analyzer.sam_service; import segment_anything; print(segment_anything.__file__)"
+```
+
+### 4. EasyOCR 패키지와 가중치
+
+영문·숫자·기호를 읽는 현재 UI에는 **CRAFT + english_g2 두 파일**이 필요합니다. Tesseract를 설치할 필요는 없습니다. 먼저 torch·torchvision을 설치한 뒤:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-ocr.txt
+.\.venv\Scripts\python.exe -m pip check
+```
+
+`requirements-ocr.txt`는 `easyocr==1.7.2`를 지정하며 OpenCV 등 의존성도 pip가 설치합니다. torch가 설치되지 않은 상태에서 EasyOCR부터 설치하면 장치와 다른 torch 패키지가 선택될 수 있습니다.
+
+| 용도 | 공식 다운로드 | 압축 해제 후 필요한 파일 |
+|---|---|---|
+| 글자 위치 검출 | [craft_mlt_25k.zip](https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/craft_mlt_25k.zip) | `craft_mlt_25k.pth` |
+| 영어·숫자 인식 | [english_g2.zip](https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/english_g2.zip) | `english_g2.pth` |
+
+ZIP 자체가 아니라 **압축을 푼 `.pth` 파일**을 다음 위치에 넣습니다.
+
+- `TEM_Analyzer_v2/models/easyocr/craft_mlt_25k.pth`
+- `TEM_Analyzer_v2/models/easyocr/english_g2.pth`
+
+UI의 `로컬 EasyOCR 폴더`는 `models/easyocr` 또는 그 폴더의 절대 경로입니다. ZIP 이름의 하위 폴더가 한 번 더 생기지 않도록 확인하세요. `korean_g2.pth`는 현재 영어 OCR UI에는 필요하지 않습니다.
+
+인터넷이 되는 Windows PC에서 다운로드·압축 해제를 명령으로 하려면:
+
+```powershell
+New-Item -ItemType Directory -Force .\downloads, .\models\easyocr | Out-Null
+Invoke-WebRequest -Uri "https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/craft_mlt_25k.zip" -OutFile .\downloads\craft_mlt_25k.zip
+Invoke-WebRequest -Uri "https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/english_g2.zip" -OutFile .\downloads\english_g2.zip
+Expand-Archive -LiteralPath .\downloads\craft_mlt_25k.zip -DestinationPath .\models\easyocr -Force
+Expand-Archive -LiteralPath .\downloads\english_g2.zip -DestinationPath .\models\easyocr -Force
+```
+
+이 다운로드 명령은 인터넷 연결이 있는 준비 PC에서 실행합니다. 회사망에서 GitHub 다운로드가 막혀 있으면 외부에서 받은 파일을 회사의 반입 절차에 따라 옮깁니다.
+
+**자동 다운로드를 끈 상태에서 OCR 가중치 로드 확인:**
+
+```powershell
+.\.venv\Scripts\python.exe -c "import easyocr; easyocr.Reader(['en'],gpu=False,model_storage_directory='models/easyocr',user_network_directory='models/easyocr',download_enabled=False,verbose=False); print('OCR local weights OK')"
+```
+
+현재 앱의 OCR은 CPU로 실행됩니다. GPU는 SAM에서 선택할 수 있습니다. 앱도 `download_enabled=False`로 로드하므로 가중치가 없으면 자동 다운로드를 시도하지 않고 오류를 표시합니다.
+
+### 5. 회사망용 wheel 준비와 오프라인 설치
+
+**인터넷 연결 준비 PC에서** 위 1~4단계 패키지 설치와 확인을 먼저 마칩니다. 다음 절차는 같은 OS/아키텍처/Python 3.11용 패키지를 모으는 CPU 예시입니다. 별도 실험 패키지가 없는 새 `.venv`에서 진행하세요.
+
+```powershell
+# 빌드 도구도 함께 보존합니다.
+.\.venv\Scripts\python.exe -m pip install setuptools wheel
+# pip freeze 출력은 UTF-8 파일로 저장합니다. 선택 설치한 로컬 SAM은 앱에 소스가 있으므로 제외합니다.
+.\.venv\Scripts\python.exe -c "import subprocess,pathlib; s=subprocess.check_output([__import__('sys').executable,'-m','pip','freeze','--all'],text=True); lines=[x for x in s.splitlines() if not x.lower().replace('_','-').startswith('segment-anything')]; pathlib.Path('requirements-lock.txt').write_text('\n'.join(lines)+'\n',encoding='utf-8')"
+.\.venv\Scripts\python.exe -m pip download --only-binary=:all: --dest wheelhouse -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+GPU 패키지를 준비했다면 마지막 명령의 `/cpu` 주소를 **2단계 설치 때 사용한 공식 CUDA wheel index 주소**로 바꾸세요. 이미 설치한 정확한 버전을 `requirements-lock.txt`에 기록하므로 torch/torchvision 조합을 유지합니다. wheel을 구할 수 없다는 오류가 있으면 누락된 채로 반입하지 말고 Python/OS 일치 여부와 해당 패키지의 wheel 제공 여부를 먼저 확인합니다. 위 절차는 회사 정책상 패키지 반입이 허용된 경우 사용합니다.
+
+회사 PC로 복사할 것은 **프로그램 폴더, wheelhouse, requirements-lock.txt, SAM `.pth`, OCR `.pth` 2개**입니다. `.venv` 자체는 복사하지 않습니다. Python 3.11 64-bit는 회사 PC에도 설치되어 있어야 합니다.
+
+**인터넷이 없는 회사 PC에서:**
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --no-index --find-links .\wheelhouse -r .\requirements-lock.txt
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -c "import torch,torchvision,easyocr; print(torch.__version__,torchvision.__version__); print('CUDA:',torch.cuda.is_available())"
+.\.venv\Scripts\python.exe -c "import tem_analyzer.sam_service; import segment_anything; print(segment_anything.__file__)"
+.\.venv\Scripts\python.exe run.py
+```
+
+`--no-index`는 외부 패키지 인덱스를 사용하지 않도록 합니다. 오프라인 PC에서는 온라인용 `install_windows.bat` 대신 위 명령을 사용하세요. 패키지 설치 후에는 `start_windows.bat`로 실행할 수 있습니다.
+
+### 6. 화면 입력과 실제 모델 점검
+
+`http://127.0.0.1:8765`를 열고 다음을 지정합니다.
+
+| 화면 항목 | 예시 |
+|---|---|
+| SAM 체크포인트 | `C:/TEM_Analyzer_v2/models/sam_vit_b_01ec64.pth` |
+| 모델 | `vit_b` (파일과 일치) |
+| 장치 | GPU 없는 PC: `cpu`, GPU 서버: 확인 후 `cuda` 또는 `auto` |
+| 학습 decoder / Lab adaptation | 기본 SAM을 확인할 때는 둘 다 빈칸 |
+| 로컬 EasyOCR 폴더 | `C:/TEM_Analyzer_v2/models/easyocr` |
+
+```powershell
+# 가중치 없이 기본 앱 점검
+.\.venv\Scripts\python.exe smoke_test.py
+# 실제로 준비한 SAM 가중치로 합성 이미지 추론 점검
+.\.venv\Scripts\python.exe smoke_test.py --checkpoint models/sam_vit_b_01ec64.pth --variant vit_b --device cpu --no-grid
+```
+
+이 문서 작성 환경에서는 실제 torch/SAM/OCR 가중치 전체 설치를 실행하지 않았습니다. 위 명령은 공식 설치 방식과 앱 경로를 대조해 작성했으며, 최종 설치·실제 가중치 로드는 대상 PC에서 확인해야 합니다.
+
+### 설치 오류별 확인
+
+| 오류 | 확인할 내용 |
+|---|---|
+| `No module named torch/torchvision/easyocr` | 설치할 때와 실행할 때 모두 `.venv/Scripts/python.exe`를 사용했는지 확인 |
+| `operator torchvision::nms does not exist` / torchvision 확장 로드 실패 | torch·torchvision의 버전과 CPU/CUDA 배포가 섞였는지 확인. 두 패키지를 같은 공식 index의 호환 조합으로 함께 재설치 |
+| `No module named segment_anything` | ZIP의 `adaptation_backend/vendor/segment-anything/segment_anything` 폴더 존재 확인. 앱 import 확인 명령을 사용하거나 3단계 로컬 설치 수행 |
+| `Missing/Unexpected key(s) in state_dict` | ViT-B/L/H와 체크포인트 일치 확인. Transformers 변환 가중치 또는 SAM 2 파일을 넣지 않았는지 확인 |
+| `OCR 가중치가 없습니다` / MD5 mismatch | ZIP 압축 해제, 폴더 중첩, 정확한 파일명 확인. 손상된 파일은 공식 ZIP으로 다시 받기 |
+| `not a supported wheel on this platform` | Windows/Linux, x64/ARM, Python 3.11/3.12 등 wheel 대상 확인 |
+| `CUDA available: False` | CPU 설치는 정상. GPU 사용 시 CUDA wheel 및 드라이버 확인 |
+
+설치 근거: [PyTorch](https://pytorch.org/get-started/locally/), [공식 SAM](https://github.com/facebookresearch/segment-anything), [EasyOCR v1.7.2 가중치 설정](https://github.com/JaidedAI/EasyOCR/blob/v1.7.2/easyocr/config.py), [pip 로컬 패키지 설치](https://pip.pypa.io/en/stable/user_guide/#installing-from-local-packages).
 
 ## v2의 주요 변경
 

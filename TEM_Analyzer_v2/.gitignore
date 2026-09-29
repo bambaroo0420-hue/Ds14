@@ -5,3 +5,9 @@ projects/
 models/*.pth
 models/*.pt
 
+
+wheelhouse/
+downloads/
+models/**/*.pth
+models/**/*.pt
+requirements-lock.txt

@@ -5,7 +5,7 @@ httpx>=0.27,<1  # smoke_test.py / FastAPI TestClient
 numpy>=1.24
 Pillow>=10
 scipy>=1.10
-# Optional for OCR: easyocr and its local weights
-# Optional for SAM: torch, torchvision, segment-anything
+# Optional OCR: -r requirements-ocr.txt plus local model weights
+# Optional SAM: install matching torch + torchvision; SAM source is bundled
 
 matplotlib>=3.7

@@ -1,0 +1,2 @@
+# Install a matching torch/torchvision pair first; see README_KO.md.
+easyocr==1.7.2
