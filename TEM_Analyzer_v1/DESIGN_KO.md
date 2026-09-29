@@ -51,3 +51,7 @@ flowchart TB
 ## 검증과 발표 KPI
 
 먼저 회사 내 미학습 영상으로 grid 기본값, 추가점, ROI 재분할의 마스크 IoU/Dice, 누락된 층, 검수 시간·클릭 수, 추론 시간을 비교한다. 후보 필터 점수는 GT 정확도가 아니다. 학습 모델의 비교는 동일 영상·동일 prompt에서 수행하고 train/test를 시편 단위로 분리한다. 이미지 7장 결과는 사례 검증으로만 보고한다. 경계/계측이 아직 없는 이 버전에서 TAT 개선을 계측 자동화 전체의 실적이라고 주장하지 않는다.
+
+## v1.2 변경
+
+프롬프트 준비는 prompts.py의 grid 생성과 비지도 K-means 추가점 제안으로 분리했습니다. /api/prompts/grid 및 /api/prompts/ml은 SAM을 호출하지 않고 점 좌표만 반환합니다. /api/sam/prepared는 현재 UI의 점 목록 및 box를 받아 SAM을 실행합니다. 모델 서비스는 prepared_points를 정규화해 공식 SAM 자동 생성기에 전달합니다. 수동 객체점은 별도 predictor 호출로 보존합니다. 후보와 레이어 삭제는 API가 관리하고 레이어 mask endpoint는 class ID별 합집합 PNG를 반환합니다. UI는 그레이스케일 mask 값으로 alpha를 구성하고 요청 순서 토큰을 검사하여 늦은 이전 응답을 무시합니다.

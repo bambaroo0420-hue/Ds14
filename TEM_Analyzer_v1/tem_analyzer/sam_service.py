@@ -48,7 +48,7 @@ class ModelService:
         out=(logits[0,0].float().cpu().numpy()>0).astype('uint8')
         return np.asarray(Image.fromarray(out).resize((w,h),resample=Image.Resampling.NEAREST))>0
 
-    def automatic(self,image,grid=16,pred_iou=.90,stability=.92,nms=.8,exclude=None):
+    def automatic(self,image,grid=16,pred_iou=.90,stability=.92,nms=.8,exclude=None,prepared_points=None):
         if self.model is None:raise ValueError('먼저 SAM 모델을 로드하세요.')
         from segment_anything import SamAutomaticMaskGenerator
         import torch
@@ -57,6 +57,11 @@ class ModelService:
         if exclude is None:exclude=np.zeros(image.shape[:2],bool)
         coords=(np.arange(grid)+.5)/grid
         points=np.array([[x,y] for y in coords for x in coords if not exclude[min(int(y*image.shape[0]),image.shape[0]-1),min(int(x*image.shape[1]),image.shape[1]-1)]],dtype=np.float32)
+        if prepared_points is not None:
+            from .prompts import validate_points
+            points=np.asarray(validate_points(prepared_points,image.shape[1],image.shape[0]),np.float32).reshape(-1,2)
+            points=points/np.array([image.shape[1],image.shape[0]],np.float32)
+            points=np.asarray([p for p in points if not exclude[min(int(p[1]*image.shape[0]),image.shape[0]-1),min(int(p[0]*image.shape[1]),image.shape[1]-1)]],np.float32).reshape(-1,2)
         if not len(points):return []
         gen=SamAutomaticMaskGenerator(self.model,points_per_side=None,point_grids=[points],points_per_batch=8,crop_n_layers=0,pred_iou_thresh=float(pred_iou),stability_score_thresh=float(stability),box_nms_thresh=float(nms),min_mask_region_area=0)
         with torch.inference_mode(): items=gen.generate(image)
