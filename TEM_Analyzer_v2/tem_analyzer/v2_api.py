@@ -219,7 +219,9 @@ def install(app,project,model,model_lock):
         settings=body.get('settings',{});record=project.state['preprocessing'][iid];edge_cfg=record.get('edge_filter',{})
         # model_input already filtered. Erode safety for configured filter support, without filtering twice.
         safe=~excluded(am.shape,effective_template(project,iid));safe&=~guard
-        if edge_cfg.get('enabled') and float(edge_cfg.get('sigma',1))>0:safe=ndi.binary_erosion(safe,iterations=int(np.ceil(4*float(edge_cfg.get('sigma',1)))))
+        from .preprocessing import filter_support
+        support=filter_support(edge_cfg)
+        if support:safe=ndi.binary_erosion(safe,iterations=support)
         result=refine_all(rgb,am,safe,settings,overrides=body.get('overrides'),pins=body.get('pins'))
         candidate=am.copy();candidate[eligible]=result['mask'][eligible]
         # Only move the common interface, never the free external boundary of A.

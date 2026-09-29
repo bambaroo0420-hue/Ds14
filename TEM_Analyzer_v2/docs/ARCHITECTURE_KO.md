@@ -10,6 +10,8 @@
 | `tem_analyzer/labels.py` | 레이어 합성, 유효/제외/충돌 | GT 코드 규칙 |
 | `tem_analyzer/ocr.py` | 로컬 EasyOCR·Reader 캐시 | OCR 언어/모델 |
 | `tem_analyzer/sam_service.py` | SAM 로드·프롬프트·임베딩 캐시 | SAM 추론 |
+| `feature_prompts.py`, `prompts.py` | 선택형 ML/에지 추가점·Grid·미리보기 | 방식/거리/노이즈 제거 선택 |
+| `preprocessing.py` | 원본 불변 SAM/경계 필터 | Gaussian/Median/Bilateral/NLM |
 | `algorithms/annotations.py` | 문자/배율/바 박스 제안 | 촬영 표기 분류 |
 | `calibration.py`, `operations.py` | 실제 바 길이·숫자/단위 매칭 | 축척 인식 |
 | `boundary.py` | 마스크 외곽 법선 Gradient + cyclic DP | 경계 비용·극성·연속성 |

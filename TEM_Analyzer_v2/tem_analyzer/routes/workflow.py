@@ -70,12 +70,23 @@ def install(app,project,model,model_lock,gate):
                 if not 2<=grid<=32:raise ValueError('Grid 범위 2~32')
                 values=[float(cfg.get('pred_iou',.9)),float(cfg.get('stability',.92)),float(cfg.get('nms',.8))]
                 if not all(np.isfinite(v) and 0<=v<=1 for v in values):raise ValueError('SAM 필터 값은 0~1입니다.')
-                items=model.automatic(image,grid,*values,exclusion_mask(project,iid))
+                source=cfg.get('prompt_source','grid');prepared=None;proposal=None
+                if source not in ('grid','features','grid_features'):raise ValueError('일괄 프롬프트 방식 오류')
+                if source!='grid':
+                    from ..prompts import grid_points
+                    from ..feature_prompts import propose
+                    ex=exclusion_mask(project,iid)
+                    prepared=grid_points(image.shape[:2],grid,ex) if source=='grid_features' else []
+                    proposal=propose(model_input(project,iid,'prompt'),ex,prepared,cfg.get('features'))
+                    prepared+=proposal['points']
+                    if not prepared:raise ValueError('생성된 프롬프트가 없습니다. 임계값/간격을 조정하세요.')
+                items=model.automatic(image,grid,*values,exclusion_mask(project,iid),**({'prepared_points':prepared} if prepared is not None else {}))
                 run_id=uuid.uuid4().hex
                 project.state['runs'].append(dict(id=run_id,image_id=iid,stage='batch-sam',model=copy.deepcopy(model.info),settings=cfg,timestamp=time.time()))
                 for item in items:
                     c=save_prediction(project,iid,item,'batch-sam');c['run_id']=run_id
-                return {'count':len(items),'status':'needs_layer_review'}
+                if proposal:project.state.setdefault('prepared_prompts',{})[iid]={'auto_points':prepared,'settings':proposal['settings'],'source':'batch-features'}
+                return {'count':len(items),'status':'needs_layer_review','prompt_count':len(prepared) if prepared is not None else None,'warnings':proposal['warnings'] if proposal else []}
             finally:model_lock.release()
         if stage=='match':return transfer_layers(project,settings.get('reference_image'),iid,float(settings.get('match_threshold',.5)))
         if stage=='boundary':

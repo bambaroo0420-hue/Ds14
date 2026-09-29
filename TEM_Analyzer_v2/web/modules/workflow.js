@@ -1,9 +1,13 @@
-import {mountSelection} from './selection.js?v=2.1.1';
-import {mountMetrology} from './metrology.js?v=2.1.1';
-import {mountBatch} from './batch.js?v=2.1.1';
+import {mountSelection} from './selection.js?v=2.1.2';
+import {mountMetrology} from './metrology.js?v=2.1.2';
+import {mountBatch} from './batch.js?v=2.1.2';
 const T=window.TEM,$=id=>document.getElementById(id);let boundaryToken=null,boundaryImage=null;
 const selections=mountSelection(T),metrology=mountMetrology(T),batch=mountBatch(T,metrology);
 function render(){
+  $('samImageSelect').innerHTML=Object.entries(T.state.images||{}).map(([id,x])=>`<option value="${id}">${T.escape(x.name)}</option>`).join('');$('samImageSelect').value=T.current||'';
+  const masks=(T.state.candidates?.[T.current]||[]).filter(c=>!c.deleted&&c.active!==false);
+  $('samImageStatus').textContent=`전체 ${Object.keys(T.state.images||{}).length}개 이미지 · 현재 후보 ${masks.length}개 · 레이어 미지정 ${masks.filter(c=>c.layer_id==null).length}개`;
+  if($('featureInfo').dataset.image!==T.current){$('featureInfo').textContent='';$('featureInfo').dataset.image=T.current;$('featureFilteredPreview').removeAttribute('src');$('featureProposalPreview').removeAttribute('src')}
   const enabled=!!T.state.legacy_templates_enabled;
   $('toggleLegacyTemplates').textContent=enabled?'기존 위치 템플릿 끄기':'기존 위치 템플릿 켜기';
   $('toggleLegacyTemplates').setAttribute('aria-pressed',String(enabled));
@@ -23,6 +27,7 @@ function render(){
   selections.render();
 }
 $('toggleLegacyTemplates').onclick=()=>T.task(async()=>{await T.api('workflow/templates/enabled',{enabled:!T.state.legacy_templates_enabled});T.clearRegionDraft();await T.refresh()});
+$('samImageSelect').onchange=e=>T.switchImage(e.target.value);
 $('detectAnnotations').onclick=()=>T.task(async()=>{await T.api('workflow/annotations/detect',{image_id:T.current,ocr_dir:$('ocrDir').value});await T.refresh()});
 $('applyAnnotations').onclick=()=>T.task(async()=>{const indices=[...document.querySelectorAll('[data-region-index]:checked')].map(e=>+e.dataset.regionIndex);await T.api('workflow/annotations/apply',{image_id:T.current,region_indices:indices});T.clearRegionDraft();await T.refresh();T.say('제외 영역 적용됨. 스케일 제안값은 별도로 확인·확정하세요.')});
 $('matchLayers').onclick=()=>T.task(async()=>{const r=await T.api('workflow/layers/match',{reference_image:$('referenceImage').value,image_id:T.current,threshold:+$('matchThreshold').value});await T.refresh();T.say(`${r.proposals.length}개 후보 대응 제안: 결과를 검수하세요.`)});

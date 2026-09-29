@@ -295,22 +295,20 @@ def prepare_grid(body:PrepareGrid):
         return {'points':points,'count':len(points),'inference_run':False}
     except (KeyError,ValueError) as e:fail(e)
 
-class PrepareML(BaseModel):
+from .feature_prompts import FeatureConfig, propose as feature_proposals
+
+class PrepareML(FeatureConfig):
     image_id:str
     existing:list[list[float]]=Field(default_factory=list)
-    count:int=Field(default=12,ge=1,le=100)
-    clusters:int=Field(default=5,ge=2,le=12)
-    min_distance:float=Field(default=12,ge=1,le=1000)
+    preview:bool=False
 
 @app.post('/api/prompts/ml')
 def prepare_ml(body:PrepareML):
-    from .prompts import ml_points,validate_points
     try:
-        im=model_input(project,body.image_id)
-        validate_points(body.existing,im.shape[1],im.shape[0])
-        template=effective_template(project,body.image_id)
-        points=ml_points(im,excluded(im.shape[:2],template),body.existing,body.count,body.clusters,body.min_distance)
-        return {'points':points,'count':len(points),'method':'unsupervised_kmeans_intensity_texture','inference_run':False}
+        from .preprocessing import exclusion_mask
+        im=model_input(project,body.image_id,'prompt')
+        cfg=FeatureConfig(**body.model_dump())
+        return feature_proposals(im,exclusion_mask(project,body.image_id),body.existing,cfg,body.preview)
     except (KeyError,ValueError) as e:fail(e)
 
 class PreparedRun(BaseModel):

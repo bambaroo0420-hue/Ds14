@@ -10,6 +10,9 @@ SAM 후보를 레이어로 묶어 회전하고 두께/CD를 측정하는 로컬 
 - [모듈 구성과 수정 위치](docs/ARCHITECTURE_KO.md)
 - [좌표·GT·측정 데이터 계약](docs/DATA_CONTRACT_KO.md)
 - [실제 검증 결과와 한계](docs/VALIDATION_REPORT_KO.md)
+- [추가점·노이즈 제거 및 분할 우선 일괄 처리](docs/PROMPTS_DENOISE_KO.md)
+- [공개 이미지 14장 실제 검토·보완 우선순위](docs/PUBLIC_IMAGE_REVIEW_KO.md)
+- [첨부 45° 이미지: 자동 경로 실패 및 보조 회전 검토](docs/ATTACHED_45DEG_REVIEW_KO.md)
 - [변경 기록](docs/CHANGELOG_KO.md)
 
 v2.1은 이미지별 문자/바 자동 검출, 레이어 공유 경계 Gradient+DP,

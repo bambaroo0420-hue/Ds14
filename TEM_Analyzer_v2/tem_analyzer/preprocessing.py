@@ -5,7 +5,14 @@ from scipy import ndimage as ndi
 from .operations import excluded,scale_from_points
 from .calibration import bar_candidates
 
-DEFAULT_FILTER={'enabled':False,'method':'gaussian','sigma':1.,'range_sigma':.08,'contrast':1.}
+DEFAULT_FILTER={'enabled':False,'method':'gaussian','sigma':1.,'range_sigma':.08,'contrast':1.,'median_size':3,'nlm_h':10.}
+
+def filter_support(cfg):
+    cfg=DEFAULT_FILTER|dict(cfg or {})
+    if not cfg['enabled']:return 0
+    if cfg['method']=='median':return int(cfg['median_size'])//2
+    if cfg['method']=='nlm':return 13  # 21px search + 7px patch support
+    return int(np.ceil((4 if cfg['method']=='gaussian' else 2)*float(cfg['sigma'])))
 
 def exclusion_mask(project,iid):
     from .labels import unpack
@@ -29,10 +36,19 @@ def effective_template(project,iid):
 def filtered(image,cfg):
     cfg=DEFAULT_FILTER|dict(cfg or {});sigma=float(cfg['sigma']);contrast=float(cfg['contrast'])
     if not 0<=sigma<=4 or not .25<=contrast<=3:raise ValueError('sigma 0~4, 대비 0.25~3 범위입니다.')
-    if cfg['method'] not in ('gaussian','bilateral'):raise ValueError('필터 종류 오류')
+    if cfg['method'] not in ('gaussian','bilateral','median','nlm'):raise ValueError('필터 종류 오류')
+    if cfg['median_size'] not in (3,5,7,9):raise ValueError('Median 크기는 3/5/7/9입니다.')
+    if not 1<=float(cfg['nlm_h'])<=40:raise ValueError('NLM 강도는 1~40입니다.')
+    if not .01<=float(cfg['range_sigma'])<=1:raise ValueError('밝기 sigma 범위 0.01~1')
     if not cfg['enabled']:return image.copy()
     g=image.astype(np.float32)/255
-    if sigma:
+    if cfg['method']=='median':g=ndi.median_filter(g,size=(int(cfg['median_size']),int(cfg['median_size']),1))
+    elif cfg['method']=='nlm':
+        from .feature_prompts import _cv
+        cv=_cv()
+        # Independent channels preserve RGB ordering and work on grayscale TEM RGB too.
+        g=np.stack([cv.fastNlMeansDenoising(image[:,:,c],None,float(cfg['nlm_h']),7,21) for c in range(3)],axis=-1).astype(np.float32)/255
+    elif sigma:
         if cfg['method']=='gaussian':g=ndi.gaussian_filter(g,(sigma,sigma,0))
         else:
             rs=float(cfg['range_sigma'])

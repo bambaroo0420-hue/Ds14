@@ -3,7 +3,7 @@ export function mountBatch(T,metrology) {
   function ids(){return $('batchScope').value==='all'?Object.keys(T.state.images):T.selectedImages.length?T.selectedImages:[T.current].filter(Boolean)}
   function settings(){return {ocr_dir:$('ocrDir').value,apply_annotations:$('autoApplyAnnotations').checked,
     reference_image:$('referenceImage').value,match_threshold:+$('matchThreshold').value,
-    sam:{grid:+$('grid').value,pred_iou:+$('pred').value,stability:+$('stability').value,nms:+$('nms').value},
+    sam:{grid:+$('grid').value,pred_iou:+$('pred').value,stability:+$('stability').value,nms:+$('nms').value,prompt_source:$('batchPromptSource').value,features:T.featurePromptConfig()},
     boundary:{radius:+$('layerRadius').value,max_gap:+$('layerGap').value},
     rotation:metrology.rotationConfig(),measurement:metrology.measurementConfig()}}
   async function poll(){
