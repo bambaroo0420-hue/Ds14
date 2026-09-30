@@ -6,8 +6,7 @@ if not exist ".venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
-echo TEM Analyzer v2.2.9 - no automatic installation or downloads.
-echo Default address: http://127.0.0.1:8765
-".venv\Scripts\python.exe" run.py --port 8765 %*
+".venv\Scripts\python.exe" check_environment.py --verbose
+".venv\Scripts\python.exe" -m pip check
+echo No settings, projects, or packages were changed.
 pause
-

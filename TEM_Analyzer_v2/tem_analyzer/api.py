@@ -31,12 +31,14 @@ def png(a):
 def index():return FileResponse(WEB/'index.html')
 
 @app.get('/api/state')
-def state():return dict({k:v for k,v in project.state.items() if k not in ('history','future')},undo_count=len(project.state['history']),redo_count=len(project.state['future']),model=model.info,capabilities={'boundary':'available','measurement':'available','batch':'available','sam':'available' if model.info else 'requires_model'})
+def state():return dict({k:v for k,v in project.state.items() if k not in ('history','future')},undo_count=len(project.state['history']),redo_count=len(project.state['future']),model=model.info,storage_error=getattr(project,'_storage_error',None),capabilities={'boundary':'available','measurement':'available','batch':'available','sam':'available' if model.info else 'requires_model'})
 
 @app.post('/api/images')
 async def upload(file:UploadFile=File(...)):
     try:
-        data=await file.read(100*1024*1024+1)
+        try:data=await file.read(100*1024*1024+1)
+        except (OSError,ValueError) as exc:
+            raise HTTPException(503,f'업로드 임시 파일 읽기 실패: {exc}. 서버의 임시 폴더 접근 권한과 파일 잠금을 확인하세요.') from exc
         if len(data)>100*1024*1024:raise ValueError('파일은 100 MB 이하로 제한합니다.')
         return {'image_id':project.add_image(data,file.filename or 'image')}
     except (ValueError,OSError) as e:fail(e)

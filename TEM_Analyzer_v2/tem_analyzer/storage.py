@@ -1,5 +1,5 @@
 """Versioned metadata, immutable masks, persistent undo and recoverable deletion."""
-import copy, json, os, tempfile, uuid, shutil, time
+import copy, json, os, tempfile, uuid, shutil, time, logging
 from pathlib import Path
 import numpy as np
 from PIL import Image
@@ -12,9 +12,19 @@ def atomic_json(path,value):
     try:
         with os.fdopen(fd,'w',encoding='utf8') as f:
             json.dump(value,f,ensure_ascii=False,indent=2,allow_nan=False);f.flush();os.fsync(f.fileno())
-        os.replace(tmp,path)
+        for attempt in range(8):
+            try:
+                os.replace(tmp,path)
+                return
+            except OSError as exc:
+                if getattr(exc,'winerror',None) not in (5,32,33) or attempt==7:
+                    raise
+                time.sleep(.2*(attempt+1))
     finally:
-        if os.path.exists(tmp):os.unlink(tmp)
+        try:os.unlink(tmp)
+        except FileNotFoundError:pass
+        except OSError as exc:
+            logging.getLogger(__name__).warning('Temporary file cleanup failed: %s (%s)',tmp,exc)
 
 class Project:
     def __init__(self,root):
@@ -35,7 +45,9 @@ class Project:
             for c in items:c.setdefault('active',True);c.setdefault('deleted',False)
             self.state['preprocessing'].setdefault(iid,{'template':copy.deepcopy(self.state['templates'][self.state['selected_template']]),'reviewed':False})
         self.recover_deletions();self.save()
-    def save(self):atomic_json(self.path,self.state)
+    def save(self):
+        if getattr(self,'_storage_error',None):raise OSError(self._storage_error)
+        if not getattr(self,'_defer_saves',False):atomic_json(self.path,self.state)
     def snapshot(self):return copy.deepcopy({k:v for k,v in self.state.items() if k not in ('history','future','runs','jobs')})
     def checkpoint(self,action):
         self.state['history'].append({'action':action,'state':self.snapshot()});self.state['history']=self.state['history'][-20:];self.state['future']=[]
@@ -49,14 +61,24 @@ class Project:
         return {'action':entry['action'],'revision':revision}
     def add_image(self,data,name):
         import io
-        with Image.open(io.BytesIO(data)) as src:
-            if src.width*src.height>32_000_000:raise ValueError('32 MP 이하만 지원합니다.')
-            if src.mode not in ('RGB','RGBA','L','P'):raise ValueError('8-bit RGB/회색 이미지를 사용하세요. 고비트 원본은 명시적으로 변환하세요.')
-            im=src.convert('RGB');iid=uuid.uuid4().hex[:12];im.save(self.root/'images'/f'{iid}.png')
+        try:
+            with Image.open(io.BytesIO(data)) as src:
+                if src.width*src.height>32_000_000:raise ValueError('32 MP 이하만 지원합니다.')
+                if src.mode not in ('RGB','RGBA','L','P'):raise ValueError('8-bit RGB/회색 이미지를 사용하세요. 고비트 원본은 명시적으로 변환하세요.')
+                im=src.convert('RGB');im.load()
+        except (OSError,ValueError,Image.DecompressionBombError) as exc:
+            raise ValueError(f'이미지 읽기 실패: {exc}. 정상적인 8-bit PNG/JPEG/TIFF 파일인지 확인하세요.') from exc
+        iid=uuid.uuid4().hex[:12]
+        im.save(self.root/'images'/f'{iid}.png')
+        before=copy.deepcopy(self.state)
+        try:
             self.state['images'][iid]=dict(name=Path(name).name,width=im.width,height=im.height)
-        self.state['candidates'][iid]=[]
-        self.state['preprocessing'][iid]={'template':{'scale_roi':None,'text_rois':[]},'reviewed':False,'regions_applied':False}
-        self.state['history']=[];self.state['future']=[];self.state['revision']+=1;self.save();return iid
+            self.state['candidates'][iid]=[]
+            self.state['preprocessing'][iid]={'template':{'scale_roi':None,'text_rois':[]},'reviewed':False,'regions_applied':False}
+            self.state['history']=[];self.state['future']=[];self.state['revision']+=1;self.save();return iid
+        except Exception:
+            self.state=before
+            raise
     def require_image(self,iid):
         if iid not in self.state['images']:raise KeyError('존재하지 않는 이미지')
     def image(self,iid):

@@ -251,6 +251,34 @@ def install(app,project,model,model_lock,gate):
     def rotation_confirm(body:dict):
         value=alignment_current(project,body['image_id']);value['confirmed']=True;return value
 
+    @app.post('/api/workflow/scales/review')
+    def review_scales(body:dict):
+        rows=[]
+        for iid in dict.fromkeys(body.get('image_ids',[])):
+            project.require_image(iid)
+            saved=project.state['scale'].get(iid,{})
+            proposal=project.state['annotation_proposals'].get(iid,{})
+            detected=proposal.get('scale',{})
+            valid=lambda value:isinstance(value,(int,float)) and np.isfinite(value) and value>0
+            ready=valid(saved.get('nm_per_px')) and project.state['preprocessing'][iid].get('scale_status') not in ('failed','error')
+            fresh=bool(proposal) and proposal.get('input_hash')==fingerprint(project,iid)
+            can_apply=fresh and valid(detected.get('nm_per_px')) and not ready
+            status=('확정됨' if saved.get('confirmed') else '저장됨·미확정') if ready else ('검출됨·아직 미적용' if can_apply else '검출 제안 만료·재검출 필요' if proposal and not fresh else '스케일 미설정 또는 검출 실패')
+            rows.append(dict(image_id=iid,name=project.state['images'][iid]['name'],saved=saved.get('nm_per_px'),detected=detected.get('nm_per_px'),ready=ready,can_apply=can_apply,status=status))
+        return {'rows':rows}
+
+    @app.post('/api/workflow/scales/apply-proposals')
+    def apply_scale_proposals(body:dict):
+        ids=list(dict.fromkeys(body.get('image_ids',[])))
+        if not ids:raise ValueError('적용할 이미지가 없습니다.')
+        rows=review_scales({'image_ids':ids})['rows']
+        if any(not r['can_apply'] for r in rows):raise ValueError('유효한 미적용 스케일 제안만 선택하세요. 기존 스케일은 여기서 덮어쓰지 않습니다.')
+        for iid in ids:
+            value=copy.deepcopy(project.state['annotation_proposals'][iid]['scale']);value['confirmed']=False
+            project.state['scale'][iid]=value
+            project.state['preprocessing'][iid].update(scale_requested=True,scale_status='proposed')
+        return {'applied':ids,'confirmed':False,'exclusion_regions_changed':False}
+
     @app.post('/api/workflow/confirm-many')
     def confirm_many(body:dict):
         ids=list(dict.fromkeys(body['image_ids']));kind=body['kind'];values=[]
@@ -260,7 +288,8 @@ def install(app,project,model,model_lock,gate):
             if kind=='rotation':values.append(alignment_current(project,iid))
             elif kind=='scale':
                 s=project.state['scale'].get(iid,{})
-                if not s.get('nm_per_px') or project.state['preprocessing'][iid].get('scale_status') in ('failed','error'):raise ValueError('검출 실패가 포함되어 있습니다. 실패 항목을 제외하세요.')
+                row=review_scales({'image_ids':[iid]})['rows'][0]
+                if not row['ready']:raise ValueError(f"{row['name']}: {row['status']}. 스케일 검토 표에서 검출값을 먼저 저장하거나 1 이미지·스케일에서 수동 설정하세요.")
                 values.append(s)
             else:raise ValueError('확정 종류는 scale/rotation입니다.')
         for v in values:v['confirmed']=True

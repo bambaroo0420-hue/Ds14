@@ -14,6 +14,7 @@ class JobManager:
         project.save()
 
     def start(self,ids,steps,settings):
+        if getattr(self.project,'_storage_error',None):raise ValueError(self.project._storage_error)
         if self.task and not self.task.done():raise ValueError('이미 일괄 작업이 실행 중입니다.')
         ids=list(dict.fromkeys(ids))
         if not ids or not steps:raise ValueError('이미지와 처리 단계를 선택하세요.')

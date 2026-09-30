@@ -1,4 +1,4 @@
-import {mountRotationComparison} from './rotation_compare.js?v=2.2.8';
+import {mountRotationComparison} from './rotation_compare.js?v=2.2.9';
 // Decode off-screen first so a comparison is never presented as ready while
 // its image is still loading. This does not repair an incorrect server image.
 export function prepareComparisonImage(url,label,timeoutMs=15000){

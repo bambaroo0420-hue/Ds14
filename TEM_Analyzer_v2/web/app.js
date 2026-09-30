@@ -4,16 +4,19 @@ let gridPoints=[],mlPoints=[],displayMode='candidate',overlayVersion=0,loadedIma
 let templateDraft=null,analysisRegionDraft=null;
 let preprocessingPreview=null,preprocessingVersion=0,activePage='images';
 let uiBusy=false;
+let displayedScaleKey=null;
 let candidateSort={key:'id',direction:1},scaleBar=null,barProposals=[],imageSwitchBusy=false;
 const imageDrafts={};
 const canvas=$('canvas'),ctx=canvas.getContext('2d'),host=$('canvasHost');
 function say(msg){$('message').textContent=msg;$('message').style.display='block';setTimeout(()=>$('message').style.display='none',4500)}
 async function confirmAction(message){return typeof window!=='undefined'&&window.TEM?.confirm?window.TEM.confirm(message):confirm(message)}
-async function api(path,body,method='POST') {const r=await fetch('/api/'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});if(!r.ok){let x;try{x=await r.json()}catch{x={detail:r.statusText}}throw Error(x.detail||'요청 실패')}return r.headers.get('content-type')?.includes('application/json')?r.json():r}
+async function responseError(r){let x;try{x=await r.json()}catch{x={detail:`HTTP ${r.status||''} ${r.statusText||'서버 오류'} · 서버 터미널의 오류 기록을 확인하세요.`}}return typeof x.detail==='string'?x.detail:JSON.stringify(x.detail||x)}
+async function api(path,body,method='POST') {const r=await fetch('/api/'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error(await responseError(r));return r.headers.get('content-type')?.includes('application/json')?r.json():r}
 async function task(fn){if(uiBusy)return;uiBusy=true;const controls=[...document.querySelectorAll('button,input,select')].map(e=>[e,e.disabled]);for(const [e] of controls)e.disabled=true;$('status').textContent='처리 중...';try{await fn();$('status').textContent='완료'}catch(e){say(e.message);$('status').textContent='오류: '+e.message}finally{uiBusy=false;for(const [e,disabled] of controls)e.disabled=disabled;renderGallery();window.dispatchEvent(new Event('tem:idle'))}}
 async function refresh(){
  const oldCandidate=$('candidateSelect').value,oldLayer=$('layerSelect').value;
  state=await api('state',null,'GET');
+ if(state.storage_error){$('status').textContent=state.storage_error;say(state.storage_error)}
  $('imageSelect').innerHTML=Object.entries(state.images).map(([id,x])=>`<option value="${id}">${escapeHtml(x.name)}</option>`).join('');
  if(!current||!state.images[current])current=Object.keys(state.images)[0]||null;
  $('imageSelect').value=current||'';
@@ -27,6 +30,7 @@ async function refresh(){
   if(loadedImage)imageDrafts[loadedImage]={points,gridPoints,mlPoints,box,roi,strokes};
   const d=imageDrafts[current]||{};points=d.points||[];gridPoints=d.gridPoints||[];mlPoints=d.mlPoints||[];box=d.box||null;roi=d.roi||null;strokes=d.strokes||[];scaleDraft=null;textDraft=[];if(!state.legacy_templates_enabled){templateDraft=null;analysisRegionDraft=null}tint=null;showCov=false;overlayVersion++;await loadImage();restoreScale();
  }
+ const scaleKey=JSON.stringify([current,state.scale[current]]);if(scaleKey!==displayedScaleKey){restoreScale();displayedScaleKey=scaleKey}
  renderGallery();renderCandidates();renderBatchResults();await loadPreprocessingPreview();
  $('modelInfo').textContent=JSON.stringify(state.model||{status:'모델 미로드'},null,2);
  $('scaleInfo').textContent=state.scale[current]?.nm_per_px?`${(1/state.scale[current].nm_per_px).toFixed(6)} px/nm · ${state.scale[current].nm_per_px.toFixed(6)} nm/px (${state.scale[current].confirmed?'확정':'제안·검수 필요'})`:'스케일 미확정';
@@ -86,7 +90,7 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();let [x,y]=coord(e),factor
 $('clearMarks').onclick=()=>{gridPoints=[];mlPoints=[];points=[];box=null;roi=null;strokes=[];updatePromptCount();redraw()};
 $('zoomIn').onclick=()=>{zoom*=1.2;redraw()};$('zoomOut').onclick=()=>{zoom/=1.2;redraw()};$('resetView').onclick=()=>{if(base.naturalWidth){fit=Math.min(host.clientWidth/base.width,host.clientHeight/base.height);zoom=1;panX=(host.clientWidth-base.width*fit)/2;panY=(host.clientHeight-base.height*fit)/2;redraw()}};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.page).classList.add('active');activePage=b.dataset.page;redraw()});
-$('upload').onchange=e=>task(async()=>{for(let f of e.target.files){let form=new FormData();form.append('file',f);let r=await fetch('/api/images',{method:'POST',body:form});if(!r.ok)throw Error((await r.json()).detail);current=(await r.json()).image_id}await refresh()});
+$('upload').onchange=e=>task(async()=>{try{for(let f of e.target.files){let form=new FormData();form.append('file',f);let r=await fetch('/api/images',{method:'POST',body:form});if(!r.ok)throw Error(`${f.name}: ${await responseError(r)}`);current=(await r.json()).image_id}}finally{e.target.value='';await refresh()}});
 async function deleteCurrentImage(){if(!current)return;if(!await confirmAction('현재 이미지와 해당 후보·스케일을 프로젝트에서 삭제할까요?'))return;const id=current;const result=await api('images/'+id,null,'DELETE');if(result.failed?.[id])throw Error(result.failed[id]);delete imageDrafts[id];loadedImage=null;current=null;await refresh()}
 $('deleteImage').onclick=()=>task(deleteCurrentImage);$('deleteLoadedImage').onclick=()=>task(deleteCurrentImage);
 $('clearLoadedImages').onclick=()=>task(async()=>{const count=Object.keys(state.images).length;if(!count)return;if(!await confirmAction(`${count}개 이미지와 모든 후보·스케일·검수 기록을 프로젝트에서 비울까요? 템플릿과 모델 설정은 유지됩니다.`))return;const result=await api('images',null,'DELETE');if(Object.keys(result.failed||{}).length){await refresh();throw Error('일부 이미지 삭제 실패: '+JSON.stringify(result.failed))}for(const id of Object.keys(imageDrafts))delete imageDrafts[id];loadedImage=null;current=null;points=[];gridPoints=[];mlPoints=[];box=null;roi=null;strokes=[];scaleBar=null;tint=null;preprocessingPreview=null;await refresh()});
@@ -171,10 +175,10 @@ $('drawScaleROI').onclick=()=>{if(!state.legacy_templates_enabled){say('위치 �
 $('drawScaleLine').onclick=()=>{$('tool').value='scale_line';say('스케일바의 한쪽 끝에서 반대쪽 끝까지 드래그하세요.')};
 $('detectBar').onclick=()=>task(async()=>{if(!current)throw Error('이미지를 선택하세요');let r=await api('scale/bar',{image_id:current,roi:currentTemplateDraft().scale_roi});barProposals=r.candidates;$('barSelect').innerHTML=barProposals.map((b,i)=>`<option value="${i}">${i+1}: ${b.pixel_length} px · ${b.polarity==='bright'?'밝은 바':'어두운 바'}</option>`).join('');setScaleBar(barProposals[0]?.bar||null);say(barProposals.length?'주황색 선이 실제 바와 맞는지 확인하고 길이를 입력하세요.':'바를 찾지 못했습니다. 양 끝을 직접 드래그하세요.')});
 $('barSelect').onchange=()=>setScaleBar(barProposals[+$('barSelect').value]?.bar||null);
-function batchStatus(record){if(!record)return '미적용';if(record.scale_status==='failed'||record.scale_status==='error')return '검출·처리 실패';return record.reviewed?'검수 완료':'검수 대기'}
+function batchStatus(record){if(!record)return '미적용';if(record.scale_status==='failed'||record.scale_status==='error')return '검출·처리 실패';if(!record.regions_applied)return record.scale_requested?'스케일 설정 · 제외 미적용':'제외 미적용';return record.reviewed?'제외 검수 완료':'제외 검수 대기'}
 function renderBatchResults(){
- const ids=Object.keys(state.images),records=state.preprocessing||{},applied=ids.filter(id=>records[id]),reviewed=applied.filter(id=>records[id].reviewed),failed=applied.filter(id=>['failed','error'].includes(records[id].scale_status));
- $('batchSummary').textContent=`전체 ${ids.length} · 적용 ${applied.length} · 검수 완료 ${reviewed.length} · 실패 ${failed.length}`;
+ const ids=Object.keys(state.images),records=state.preprocessing||{},applied=ids.filter(id=>records[id]?.regions_applied),reviewed=applied.filter(id=>records[id].reviewed),failed=ids.filter(id=>['failed','error'].includes(records[id]?.scale_status)),calibrated=ids.filter(id=>state.scale[id]?.confirmed&&state.scale[id]?.nm_per_px>0&&!['failed','error'].includes(records[id]?.scale_status));
+ $('batchSummary').textContent=`전체 ${ids.length} · 제외 적용 ${applied.length} · 제외 검수 완료 ${reviewed.length} · 스케일 확정 ${calibrated.length} · 실패 ${failed.length}`;
  const rows=ids.map(id=>{const r=records[id],s=state.scale[id],bad=['failed','error'].includes(r?.scale_status),valid=s?.nm_per_px&&!bad,bar=s?.pixel_length||(s?.bar?Math.hypot(s.bar[1][0]-s.bar[0][0],s.bar[1][1]-s.bar[0][1]):null),tpl=r?.auto_regions||(state.legacy_templates_enabled?r?.template:null);
  return `<tr data-batch-image="${id}" tabindex="0" class="${id===current?'selected':''}"><td>${escapeHtml(state.images[id].name)}</td><td>${batchStatus(r)}${r?.bar_candidates?.length>1?' (복수 바 후보)':''}</td><td>${valid&&bar?bar.toFixed(2):'—'}</td><td>${valid&&s.length?s.length+' '+escapeHtml(s.unit||'nm'):'—'}</td><td>${valid?(1/s.nm_per_px).toFixed(6):'—'}</td><td>${valid?s.nm_per_px.toFixed(6):'—'}</td><td>${tpl?.scale_roi?1:0} / ${tpl?.text_rois?.length||0}</td><td>${r?.excluded_pixels||0}</td></tr>`}).join('');
  $('batchResults').innerHTML=rows;$('batchLargeRows').innerHTML=rows;
