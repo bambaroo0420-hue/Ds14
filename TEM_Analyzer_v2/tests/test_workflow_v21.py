@@ -84,7 +84,8 @@ class Workflow21Tests(unittest.TestCase):
         with patch('tem_analyzer.ocr.read_words',return_value=[]):
             self.post('annotations/detect',{'image_id':self.id})
         self.post('annotations/apply',{'image_id':self.id})
-        self.assertFalse(self.api.project.state['scale'][self.id]['confirmed'])
+        # Applying exclusion boxes alone does not apply a scale proposal.
+        self.assertNotIn(self.id,self.api.project.state['scale'])
 
     def test_boundary_pair_updates_both_keeps_unknown_and_stales_preview(self):
         a,am=self.rectangle(1,(10,25));b,bm=self.rectangle(2,(25,45));p=self.api.project

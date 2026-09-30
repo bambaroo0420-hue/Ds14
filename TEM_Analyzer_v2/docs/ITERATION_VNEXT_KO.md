@@ -1,6 +1,6 @@
 # vNext 반복 개선 기록 (진행 중)
 
-요청 시간: 2026-09-30 02:39:53~07:39:53 KST (5시간). 작업 예약 ID: `tem-v2-5`.
+요청 시간: 2026-09-30 02:39:53~07:39:53 KST (5시간). 작업 예약 ID: `[예약 ID 생략]`.
 예약은 20분 간격 후속 실행이며 PC·앱이 실행 중이어야 한다. 5시간 연속 계산이나 완료를 미리 보장하는 의미는 아니다.
 종료 시각 이후 새 실험을 시작하지 않고 결과 정리 후 예약을 비활성화한다.
 
@@ -78,7 +78,7 @@
 - 독립 UI 8881: staging `test-output/ui-v220`, PID 13348 / session 3035. 두 이미지 모두 레이어 미배정이며 선택 scope로 GT·회전·계측 완료.
 - 첨부 UI 8882: staging `test-output/attached-ui-v220`, PID 36364 / session 56586. 44.1441° 영상 보조 방향은 미확정 제안. 실제 SAM W 경계가 잘못되어 이 상태의 계측 정확도를 주장하면 안 됨.
 - 증거: workspace `evidence-v220/selected-mask-batch.png`, `evidence-v220/attached-direction-44deg.png`. 보고서 `docs/V220_REVIEW_KO.md`는 GitHub에도 게시됨.
-- 자동 후속 예약 `tem-v2-5` 활성. 07:39:53 KST까지 이어서 진행하되, 5시간이 지난 것처럼 보고하지 않는다. 종료 후 예약 비활성화 필수.
+- 자동 후속 예약 `[예약 ID 생략]` 활성. 07:39:53 KST까지 이어서 진행하되, 5시간이 지난 것처럼 보고하지 않는다. 종료 후 예약 비활성화 필수.
 
 #### 다음 실행 우선 작업
 
@@ -116,7 +116,7 @@
 - Desktop 최종 Python83개13.054s / Node 회귀 / pip check 통과, 소스manifest125개. 가중치·영상·테스트프로젝트는 미업로드.
 - 사용자 앱8876 재시작 완료: PID34972 / exec session15630, Desktop cwd, 기존 `test-output/crop19-v22/project` 유지. 진행 중 작업 없음을 확인했고 모델은 미로드였음. 사용자 탭은 임의 새로고침하지 않음.
 - GUI8883은 PID29100 / session70063 최신 Python+UI. 알고리즘 hash 변경으로 이전 측정 만료를 실제 확인한 뒤 5장10/10재실행. 3cell+7°의 저장된 scope [6,8], 중앙60/다중·프레임제외, 유효24개/평균163.226nm 표시 확인.
-- Node 모사 DOM 실행 시 NODE_PATH는 bundled `C:/Users/DJ.LEE/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules`. 설치를 반복할 필요 없음.
+- Node 모사 DOM 실행 시 NODE_PATH는 사용 중인 Node 런타임의 `node_modules` 디렉터리입니다. 개인 PC의 절대 경로는 공개 배포본에서 제외했습니다. 설치를 반복할 필요는 없습니다.
 - 함수별 자료: `tools/validate_measurement_sampling.py`, `tools/validate_orientation_controls.py`. 전자는 기존 SAM 결과 사용; 이번 반복에서 실제 SAM 신규 추론은 하지 않았음.
 - 다음은 위 thin-layer 프롬프트/실제 TEM 방향 비교 우선순위로 계속. 이 마지막 게시 메타데이터는 staging 작업 기록이며 다음 코드 게시 때 포함한다. 자동 예약은 유지하며 종료 시각에 비활성화한다.
 
@@ -175,7 +175,7 @@
 - 사용자 앱8876: 진행작업0/모델미로드/정확한CLI 확인 후 본인PID38644만중지. 새PID38008 / exec session64563, Desktop cwd, 기존test-output/crop19-v22/project 유지. HTTP200/2.2.3/새검수API/영상5장 확인. 사용자브라우저는임의새로고침안함. 모델파일재설치불필요.
 - GUI8885 PID17112/session1681 유지. 최종정합알고리즘/새GUI테스트완료, 실제모델로드됨. storage.py삭제draft메타데이터후속패치는서버메모리미반영이므로삭제테스트하려면해당서버재시작필요(Desktop108회귀에서는검증완료).
 - CUA reuseTab9, profileTab8, samplingTab7 handoff. 증거 evidence-v223/transferred-three-cell-points.png, reuse-sam-batch-complete.png, review-gate-retry-complete.png. 다음반복은새ROI/얇은층검증으로이어간다.
-- 자동예약 tem-v2-5 계속활성. 07:39:53 KST 종료에비활성화해야한다. 이마지막게시메타데이터는staging기록이며다음코드게시때포함한다.
+- 자동예약 [예약 ID 생략] 계속활성. 07:39:53 KST 종료에비활성화해야한다. 이마지막게시메타데이터는staging기록이며다음코드게시때포함한다.
 
 ### 05:30 KST 전후 — 5차 v2.2.4 검증 완료, 게시 준비
 
@@ -194,7 +194,7 @@
 1. 얇은층 계측에서 invalid_region이 crop끝이 아닌 내부에도 다수 발생. 후보의 실제구멍/분절과 contour끝점 반올림 validity 오판을 구분하기 위해 알려진3px binary띠0/30/45° 직접계측 대조. SAM오차와측정알고리즘오차를분리. 작은값을몰래삭제하거나GTvalidity를전부true로바꾸지말기.
 2. 첨부45°ROI분할은미해결. 알려진방향보조사전정렬+좁은box/프로파일 비교후원본좌표복원 검토. 색선/화살표가물질정답이라는가정금지. 별도입력/출력보존.
 3. 독립ROI일괄레시피/ROI자동탐색은아직미구현. 기존preset일괄과혼동하지말기. 신규외부모델전공식자료와데이터적합성확인.
-4. 종료07:39:53KST(22:39:53UTC)새실험중지/진행중작업안전마무리/최종MD/heartbeat tem-v2-5비활성화. 현재05:30대로종료아님.
+4. 종료07:39:53KST(22:39:53UTC)새실험중지/진행중작업안전마무리/최종MD/heartbeat [예약 ID 생략]비활성화. 현재05:30대로종료아님.
 
 ### 05:34 KST — v2.2.4 게시 완료
 
@@ -223,7 +223,7 @@
 1. 첨부45°ROI 분할 미해결: 방향 보조 사전정렬+좁은box/프로파일을 원본좌표복원과 함께 검토. 생성띠·공개무GT·첨부물질을구분할것. 스케일/주석을지운것만으로물질GT정확도성공으로간주하지말것.
 2. 비교미리보기 로드/실패 안내는추후보완가능. v224일시검은영상은API정상, 이번GUI정상이나원인확정아님.
 3. 같은72조건/기존38추론그대로재실행하지말것. 독립ROI일괄레시피는아직없고preset일괄과구분.
-4. 종료07:39:53KST(22:39:53UTC) 이후새실험중지·최종문서·heartbeat tem-v2-5비활성화. 지금예약유지.
+4. 종료07:39:53KST(22:39:53UTC) 이후새실험중지·최종문서·heartbeat [예약 ID 생략]비활성화. 지금예약유지.
 
 ### 05:56 KST — v2.2.5 게시 완료
 
@@ -252,7 +252,7 @@
 
 1. 첨부에서회전한fit불안정시수동두점/각mask대표점등기존회전기준과비교,선택후보의잘못된경계와영상방향추정을구분. 양성점사전정렬값을최종회전정답으로자동확정하지말기.
 2. 선택mask일괄실패격리/저장복원/내보내기 등 마무리검수. ROI일괄레시피는아직없음. 새기능범위확장보다회귀/제한문서화우선.
-3. 종료07:39:53KST(22:39:53UTC)새실험중지,최종MD/heartbeat tem-v2-5비활성화. 현재06:18전후로예약계속유지.
+3. 종료07:39:53KST(22:39:53UTC)새실험중지,최종MD/heartbeat [예약 ID 생략]비활성화. 현재06:18전후로예약계속유지.
 
 ### 06:23 KST — v2.2.6 게시 완료
 
@@ -261,7 +261,7 @@
 - 마지막GUI새스타일이캐시되어간격이없던현상: CSS query2.2.6-r1→테스트탭새로고침후간격/기본unchecked확인. 버튼실제명칭은'부모 없이 ROI 확대 분할';문서수정. 이후TaOx저장결과41.1896잔차6.97미확정복원확인.
 - 사용자앱8876 모델미로드/작업0/정확한CLI확인후본인PID30096만재시작. 새PID22308/exec40531, Desktopcwd/test-output/crop19-v22/project그대로. HTTP200/v226/style-r1/새alignmentAPI/영상5개확인. 사용자브라우저임의새로고침안함.
 - GUI8888 PID26636/session38795 ViT-B CPU로드유지. CUAorientedTab226 id12 handoff. 이전테스트서버는종료하지않음. 증거는workspace/evidence-v226에보존.
-- 현재06:23KST, 종료07:39:53KST까지약1시간17분. heartbeat tem-v2-5계속활성. 다음반복은위후보검증또는최종실패격리/문서정리로이어가고78SAM반복금지. 마지막게시메타데이터는staging기록이며다음게시때포함한다.
+- 현재06:23KST, 종료07:39:53KST까지약1시간17분. heartbeat [예약 ID 생략]계속활성. 다음반복은위후보검증또는최종실패격리/문서정리로이어가고78SAM반복금지. 마지막게시메타데이터는staging기록이며다음게시때포함한다.
 
 ### 06:39 KST 전후 — v2.2.7 회전 기준 비교·일괄 실패 처리 검증
 
@@ -281,13 +281,13 @@
 
 1. 후보방향합의와측정정확도분리유지. 첨부분절/누출미해결로자동GT완료주장금지. 독립ROI일괄레시피여전히미지원.
 2. 종료까지약1시간남음. 전체사용자의도차이/설치·모듈문서·최종하나의종합보고서 준비,남은시간내확실히마칠수있는검증만수행.
-3. 종료07:39:53KST(22:39:53UTC)후새실험금지. 진행작업안전마무리/최종MD/heartbeat tem-v2-5비활성화필수. 현재06:39로예약유지.
+3. 종료07:39:53KST(22:39:53UTC)후새실험금지. 진행작업안전마무리/최종MD/heartbeat [예약 ID 생략]비활성화필수. 현재06:39로예약유지.
 
 ### 06:43 KST — v2.2.7 게시·실행 적용 완료 / 사용자 상태 질문
 
 - 기존branch/PR #1 commit `206bde24f9e32cd7938a54eff948c4d0ee434ced`, tree `c9816257f8ef0bb466563770757b505f4058626a`, parent `0bc0e2076a9fb659c376658ae7a19b047cab1eb4`. 소스23개개별읽기/tree일치/nonforce게시,fetch/update-ref후Git깨끗함. main미병합.
 - Desktop133PASS26.000초/Node4종PASS/pipcheckPASS/manifest162. 상세V227_REVIEW_KO.md. 원본·모델·프로젝트결과미게시.
-- 사용자'현재 상태 알려줘'에중간현황응답. 07:39:53까지약57분남음,작업중단/예약변경요청아님. heartbeat tem-v2-5유지.
+- 사용자'현재 상태 알려줘'에중간현황응답. 07:39:53까지약57분남음,작업중단/예약변경요청아님. heartbeat [예약 ID 생략]유지.
 - 사용자앱8876 모델미로드/활성작업0/정확한CLI확인후본인PID22308재시작. 새PID28580/exec43957, Desktopcwd/test-output/crop19-v22/project그대로. HTTP200/v227/comparisonAPI/영상5장확인. 사용자탭새로고침안함.
 - GUI8889 최종PID30256/exec94208 모델미로드, test-output/rotation-ui-v227. rotationTab227 id13handoff. 최종표증거evidence-v227/rotation-methods-final.png,입력점보조회전은point-direction-unconfirmed.png,실패격리는batch-skipped-retry.png.
 - 다음반복은사용자요구일치도최종표/종합보고서준비 및 남은안전검증. 78SAM/40방향동일반복금지. 시간종료07:39:53이후새실험금지/heartbeat비활성화필수. 마지막게시메타데이터는staging기록이며다음게시때포함한다.
@@ -319,27 +319,27 @@
 - 추가실제GUI8890:일반클릭두번은마지막1개만선택,단독사각형job1/1완료. Ctrl+클릭으로2개선택표시확인후두께2/2→CD2/2. GT/SAM재실행0,레이어미배정target2개,미선택실제영상3개미실행.
 - 사각형scale1nm/px/두께20유효60/CD60유효20. SAM합성scale2nm/px/두께9.371997유효410/CD277.664386유효5(불안정반례).다른방향값유지확인.
 - 실제batchZIP797312bytes07:22:33KST다운로드.3042CSV행(사각형80+60/SAM1449+1453),4방향별JSON/GTfalse검증.상태완료2/2,JS오류없음/exportUndo11불변.증거evidence-v228/batch-two-images-dual-axis.png.위V228보고서추가.
-- 현재07:23KST,종료까지약17분. 더같은SAM/배치반복하지말고마지막실행상태·문서·소스무결성검토만남음. 종료07:39:53KST이후새실험금지,최종보고서마감시각갱신/예약tem-v2-5비활성화. 현재예약유지. 마감metadata는후속문서commit에포함예정.
+- 현재07:23KST,종료까지약17분. 더같은SAM/배치반복하지말고마지막실행상태·문서·소스무결성검토만남음. 종료07:39:53KST이후새실험금지,최종보고서마감시각갱신/예약[예약 ID 생략]비활성화. 현재예약유지. 마감metadata는후속문서commit에포함예정.
 
 ### 07:28 KST — 추가 안전 회귀 및 배포 문서 검수
 
 - 애플리케이션코드변경없음. test_measurement_axes에2개추가:부분GT+두축ZIP의레이어미배정/unknown/state/disk불변,잘못된두번째이미지전체400거절/busy409/state/disk불변. 개별9PASS2.961s.
 - Desktop최종142PythonPASS29.034초/Node5종PASS/pipcheckPASS. source manifest167개일치확인,README/docs의로컬MD링크24개누락0,staging/Desktop텍스트차이0(정규화LF). fullSuite140기록을지우지않고142최종별도기록.
-- 자동화설정파일/자동화view확인:tem-v2-5 ACTIVE,20분간격,target_thread_id현재대화,기존prompt유지. OpenAI Docs skill로공식예약문서조회했으나구체heartbeat update규칙은현재tool계약과실제설정기준. 아직07:39:53전이므로비활성화안함.
+- 당시 예약 검증의 종료 시각을 확인했습니다. 자동화 내부 설정은 공개 배포 기록에서 제외했습니다.
 - 새SAM/OCR/GUI실험0. production8876 PID21888/session63241/5이미지유지,8890 GUI단독시험완료와다운로드증거는직전기록. 더반복시험불필요.
-- 다음heartbeat가종료이후이면즉시새실험없이마감:현재시각확인→최종MD의기준시각/종료기록추가→기존tem-v2-5설정보존하며status PAUSED→문서/manifest만Desktop동기화·기존branch/PR게시→최종링크/한계전달. 현재예정종료22:39:53UTC,20분주기상다음wake22:44전후일수있음. 종료전에는조용히유지,실험을시간채우기용으로재실행하지말것.
+- 종료 이후에는 새 실험을 시작하지 않고 최종 문서·manifest·기존 작업 브랜치의 결과를 정리했습니다. 자동화 제어용 내부 지시는 공개본에서 제외했습니다.
 
 ### 07:30 KST — 안전 검증 기록 게시 완료 / 종료 예약 대기
 
 - audit commit `be05d820cb5ccce7dba99e31e1ffc9e074bcba28`, tree `004049ee33a03b9aba695106afd790c7fbb74e42`, parent `dfda5d42e076238059d89c6d87bd42282f8978c7`. 문서3+안전테스트1+manifest=5파일;애플리케이션코드변경0. 원격/로컬tree일치/nonforce게시/fetch후Git깨끗함. PR1열림/main미병합.
 - 최종142Python/Node5/pipcheckPASS기록GitHub포함. 사용자앱8876PID21888/session63241은재시작불필요(앱코드변경없음).테스트프로젝트/원본/모델/스크린샷/ZIP보존,미업로드.
-- 현재07:30KST. 남은시간은중복실험없이예약마감대기. 다음heartbeat가07:39:53후라면새실험하지말고위마감절차만. 자동화config경로C:/Users/DJ.LEE/.codex/automations/tem-v2-5/automation.toml,kindheartbeat/name/prompt/rrule/targetThreadId보존,status만PAUSED. 도구사용전에현재설정읽기.
+- 07:30 KST에 앱 검증을 마친 뒤 중복 실험 없이 마감했습니다. 개인 PC 경로·대화 식별자·자동화 구성은 공개 배포본에 포함하지 않습니다.
 - 최종MD머리말은현재07:28기준이므로마감때실제시각갱신. 마지막3개메타기록은staging만이며마감문서commit에포함한다. 코드는완료,회사정확도/얇은층분할/독립ROI일괄레시피/국소법선두께는미해결로유지한다.
 
 ### 07:46 KST — 5시간 개선 예약 종료
 
 - 예정종료07:39:53KST경과확인. 종료이후새SAM/OCR/GUI실험0,마지막기능검증07:28/게시07:30. 사용자후속요청으로07:37부터feat(tem-v2)2개와최종be05d82의비교PDF를별도작성중이며새모델실험아님.
-- tem-v2-5의 기존 name/prompt/20분 rule/kind/targetThreadId를 보존하고 automation_update로 status=PAUSED. 07:46:12 KST 시각 확인 뒤 도구 성공 및 automation.toml의 PAUSED를 재확인했다. 확인 시각의 UTC는 2026-09-29 22:46:12이며, 설정 갱신은 22:46:15 UTC 전후다. 원래 예약 종료 시각과 실제 비활성화 시각을 구분한다.
+- 반복 검증 예약은 07:46 KST에 비활성화되었습니다. 예정 종료 시각과 실제 비활성화 시각을 구분합니다. 내부 설정과 식별자는 공개본에서 생략했습니다.
 - 앱코드/테스트최종be05d820cb5ccce7dba99e31e1ffc9e074bcba28(v228),142PythonPASS29.034초/Node5/pipcheckPASS. 더반복수행하지않음. 최종문서/manifest만기존branch·PR1에반영,main미병합.
 - 최종목표판정:반자동선택mask부분GT·회전·두께/CD·배치의구현/기능검증완료. 무검수회사정확도·얇은층분할·모든주석제거·일반화정합·통합ROI일괄레시피·곡면법선두께는미해결/미검증. 상세FINAL_5H_REVIEW_KO.md/V228_REVIEW_KO.md.
 - 원본/모델/프로젝트/증거PNG/ZIP은보존하고GitHub미업로드. 사용자8876서버와테스트서버는삭제/종료하지않으며기존프로젝트유지. PDF는workspace/output/pdf에별도생성하고자동으로공개저장소에올리지않는다.

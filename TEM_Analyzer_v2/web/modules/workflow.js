@@ -1,13 +1,23 @@
-import {mountSelection} from './selection.js?v=2.2.9';
-import {mountMetrology} from './metrology.js?v=2.2.9';
-import {mountBatch} from './batch.js?v=2.2.9';
-import {mountScopes} from './scopes.js?v=2.2.9';
-import {mountPromptTransfer} from './prompt_transfer.js?v=2.2.9';
-import {mountPromptBatch} from './prompt_batch.js?v=2.2.9';
+import {mountSelection} from './selection.js?v=2.3.0';
+import {mountMetrology} from './metrology.js?v=2.3.0';
+import {mountBatch} from './batch.js?v=2.3.0';
+import {mountScopes} from './scopes.js?v=2.3.0';
+import {mountPromptTransfer} from './prompt_transfer.js?v=2.3.0';
+import {mountPromptBatch} from './prompt_batch.js?v=2.3.0';
+import {mountGapBridge} from './gap_bridge.js?v=gap-1';
+import {mountWorkbench} from './workbench.js?v=2.3.0';
+import {mountManualGroups} from './manual_groups.js?v=2.3.0';
+import {mountROIAuto} from './roi_auto.js?v=2.3.0';
+import {mountAnnotationReview} from './annotation_review.js?v=2.3.0';
 const T=window.TEM,$=id=>document.getElementById(id);let boundaryToken=null,boundaryImage=null;
 const selections=mountSelection(T),scopes=mountScopes(T,selections),metrology=mountMetrology(T),batch=mountBatch(T,metrology);
 const promptTransfer=mountPromptTransfer(T);
 const promptBatch=mountPromptBatch(T);
+const gapBridge=mountGapBridge(T);
+mountWorkbench(T,selections);
+mountManualGroups(T);
+mountROIAuto(T);
+mountAnnotationReview(T);
 const ocrMode=document.createElement('label');ocrMode.className='inline-check';ocrMode.innerHTML='<input id="enhancedOCR" type="checkbox" checked>확대 재검출 OCR (약한 문자 보완, 더 느림)';$('detectAnnotations').before(ocrMode);
 function render(){
   $('samImageSelect').innerHTML=Object.entries(T.state.images||{}).map(([id,x])=>`<option value="${id}">${T.escape(x.name)}</option>`).join('');$('samImageSelect').value=T.current||'';
@@ -31,6 +41,7 @@ function render(){
   $('annotationRows').innerHTML=p?p.regions.map((r,i)=>`<tr><td><input type="checkbox" ${r.recommended===false?'':'checked'} data-region-index="${i}" aria-label="제외 박스 ${i+1}">${T.escape(r.kind)}</td><td>${T.escape(r.text)} ${T.escape(r.reason||'')}</td><td>${r.box.map(v=>Math.round(v)).join(', ')}</td></tr>`).join(''):'';
   if(p)$('annotationPreview').src=`/api/workflow/annotations/${T.current}.png?v=${T.state.revision}`;else $('annotationPreview').removeAttribute('src');
   selections.render();
+  window.dispatchEvent(new Event('tem:workbench-render'));
 }
 $('toggleLegacyTemplates').onclick=()=>T.task(async()=>{await T.api('workflow/templates/enabled',{enabled:!T.state.legacy_templates_enabled});T.clearRegionDraft();await T.refresh()});
 $('samImageSelect').onchange=e=>T.switchImage(e.target.value);

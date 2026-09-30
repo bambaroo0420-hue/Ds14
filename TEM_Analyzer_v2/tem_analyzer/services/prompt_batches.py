@@ -20,7 +20,8 @@ def transfer_input_hash(project,iid,key):
                        source_exclude_sha=hashlib.sha256(exclusion_mask(project,preset['source_image']).tobytes()).hexdigest(),
                        target_shape=list(target.shape),target_sha=hashlib.sha256(target.tobytes()).hexdigest(),
                        exclude_sha=hashlib.sha256(exclusion_mask(project,iid).tobytes()).hexdigest(),
-                       sam_filter=project.state['preprocessing'][iid].get('sam_filter')))
+                       sam_filter=project.state['preprocessing'][iid].get('sam_filter'),
+                       prompt_filter=project.state['preprocessing'][iid].get('prompt_filter')))
 
 
 def prepare_transfer(project,iid,key,method):
@@ -69,11 +70,15 @@ def run_transferred(project,model,iid,values):
     if draft['manual_mode']=='independent':auto=auto+[p[:2] for p in manual];manual=[]
     if auto:items.extend((x,'transferred-auto') for x in model.automatic(image,pred_iou=values[0],stability=values[1],nms=values[2],exclude=ex,prepared_points=auto))
     if manual or box is not None:items.append((model.prompt(image,manual,box),'transferred-manual'))
+    from .recipe_groups import infer_groups
+    group_items=infer_groups(model,image,draft.get('manual_groups',[]),ex)
     run_id=uuid.uuid4().hex;provenance=dict(preset_id=value['preset_id'],source_image=value['source_image'],method=value['method'],
         matrix=value['matrix'],ecc_score=value['ecc_score'],input_hash=value['input_hash'],review_hash=value['review_hash'])
     for item,source in items:
         candidate=save_prediction(project,iid,item,source,prompts=dict(draft=draft,transfer=provenance));candidate['run_id']=run_id
+    for item,group in group_items:
+        candidate=save_prediction(project,iid,item,'transferred-group',prompts=dict(group,transfer=provenance));candidate['run_id']=run_id
     project.state.setdefault('prepared_prompts',{})[iid]=dict(draft,source='reviewed-transfer',transfer=provenance)
     project.state['runs'].append(dict(id=run_id,image_id=iid,stage='batch-sam-transferred',model=copy.deepcopy(model.info),
                                      transfer=provenance,filters=dict(pred_iou=values[0],stability=values[1],nms=values[2]),timestamp=time.time()))
-    return dict(count=len(items),status='needs_layer_review',prompt_count=len(auto)+len(manual),warnings=value['warnings'],preset_id=value['preset_id'])
+    return dict(count=len(items)+len(group_items),status='needs_layer_review',prompt_count=len(auto)+len(manual)+sum(len(g['points']) for _,g in group_items),warnings=value['warnings'],preset_id=value['preset_id'])

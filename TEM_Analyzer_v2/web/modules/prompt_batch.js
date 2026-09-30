@@ -18,7 +18,7 @@ export function mountPromptBatch(T){
   async function inspect(iid){
     const value=await T.api(`workflow/prompt-transfers/${iid}`,null,'GET');viewing={image_id:iid,signature:value.signature,draft_hash:value.draft_hash};
     previewLoaded=false;previewGate();
-    $('promptBatchPreviewInfo').textContent=`${T.state.images[iid].name} · ${value.preset_id} · ${value.method}${value.ecc_score==null?'':' ECC '+value.ecc_score.toFixed(3)} · ${value.warnings.join(' ')}`;
+    $('promptBatchPreviewInfo').textContent=`${T.state.images[iid].name} · ${value.preset_id} · Manual 그룹 ${(value.draft.manual_groups||[]).map(g=>g.name).join(', ')||'없음'} · ${value.method}${value.ecc_score==null?'':' ECC '+value.ecc_score.toFixed(3)} · ${value.warnings.join(' ')}`;
     $('promptBatchPreviewImage').src=`/api/workflow/prompt-transfers/${iid}/preview.png?v=${value.draft_hash}`;dialog.showModal();
   }
   $('markPromptViewed').onclick=()=>{if(viewing&&previewLoaded&&!T.busy){seen.set(viewing.image_id,{...viewing,selected:true});dialog.close();render()}};
@@ -31,7 +31,7 @@ export function mountPromptBatch(T){
       if(seen.get(iid)?.draft_hash!==value?.draft_hash||value?.superseded_by)seen.delete(iid);
       check.disabled=!seen.has(iid);check.checked=!!seen.get(iid)?.selected;check.onchange=()=>{const entry=seen.get(iid);if(entry)entry.selected=check.checked};cell.append(check);row.append(cell);
       const name=document.createElement('td');name.textContent=image.name;row.append(name);
-      const status=document.createElement('td');status.textContent=!value?'미준비':value.superseded_by?'새 준비 대기/실패/취소 · 이전 draft 실행 금지':`${value.preset_id} · ${value.draft.auto_points.length}+${value.draft.manual_points.length}점 · ${value.review_hash?'검토 기록 있음 (실행 시 최신 입력 확인)':'검토 필요'}`;row.append(status);
+      const status=document.createElement('td');status.textContent=!value?'미준비':value.superseded_by?'새 준비 대기/실패/취소 · 이전 draft 실행 금지':`${value.preset_id} · ${value.draft.auto_points.length}+${value.draft.manual_points.length}점 + Manual ${(value.draft.manual_groups||[]).length}그룹 · ${value.review_hash?'검토 기록 있음 (실행 시 최신 입력 확인)':'검토 필요'}`;row.append(status);
       const action=document.createElement('td'),view=document.createElement('button');view.textContent='점·box 보기';view.disabled=!value||!!value.superseded_by;view.onclick=()=>T.task(()=>inspect(iid));action.append(view);row.append(action);$('promptTransferRows').append(row);
     }
   }

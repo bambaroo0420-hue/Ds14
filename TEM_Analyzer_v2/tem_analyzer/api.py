@@ -209,12 +209,25 @@ def duplicate(body:Duplicate):
     except KeyError as e:fail(e)
 
 class Paint(BaseModel):image_id:str;candidate_id:int;strokes:list[dict]
+
+def brush_origin(image_id,item):
+    """Drafts inherit their edit target's lock; reject stale ancestor chains."""
+    seen=set()
+    while item is not None:
+        project.assert_editable(item)
+        if item.get('deleted') or not item.get('active',True):raise ValueError('브러시 부모가 변경되었습니다. 다시 보정하세요.')
+        if item['id'] in seen:raise ValueError('브러시 부모 참조 오류')
+        seen.add(item['id'])
+        if item.get('layer_id') is not None or not item.get('parent'):return item
+        item=project.candidate(image_id,item['parent'])
+    raise ValueError('브러시 부모를 찾을 수 없습니다.')
+
 @app.post('/api/candidates/brush')
 def paint(body:Paint):
     try:
         old=project.candidate(body.image_id,body.candidate_id)
         if old is None:raise KeyError('후보가 없습니다.')
-        project.assert_editable(old)
+        brush_origin(body.image_id,old)
         original=project.mask(body.image_id,body.candidate_id);edited=brush(original,body.strokes)
         from .labels import protection,pack
         guard=protection(project,body.image_id);edited[guard]=original[guard]
@@ -222,14 +235,17 @@ def paint(body:Paint):
         return project.put_candidate(body.image_id,edited,'brush-preview',None,body.candidate_id,pending_protection=pack(original!=edited))
     except (KeyError,ValueError) as e:fail(e)
 
-class LayerIn(BaseModel):id:int|None=None;name:str='';color:str='#28dc82'
+class LayerIn(BaseModel):id:int|None=None;name:str='';color:str|None=None
 @app.post('/api/layers')
 def layer(body:LayerIn):
     layers=project.state['layers'];lid=body.id or (max(x['id'] for x in layers)+1 if layers else 1)
     if not 1<=lid<65533:raise HTTPException(400,'레이어 ID 범위 오류')
     import re
-    if not re.fullmatch(r'#[0-9a-fA-F]{6}',body.color):raise HTTPException(400,'색상은 #RRGGBB입니다.')
     old=next((x for x in layers if x['id']==lid),None)
+    import colorsys
+    rgb=colorsys.hsv_to_rgb(((lid-1)*.61803398875+.42)%1,.65,.95)
+    color=body.color or (old['color'] if old else '#'+''.join(f'{round(v*255):02x}' for v in rgb))
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}',color):raise HTTPException(400,'색상은 #RRGGBB입니다.')
     name=body.name.strip()
     if not name:
         if old:name=old['name']
@@ -237,8 +253,8 @@ def layer(body:LayerIn):
             number=lid;names={x['name'].casefold() for x in layers}
             while f'layer {number}'.casefold() in names:number+=1
             name=f'Layer {number}'
-    if old:old.update(name=name,color=body.color)
-    else:layers.append(dict(id=lid,name=name,color=body.color))
+    if old:old.update(name=name,color=color)
+    else:layers.append(dict(id=lid,name=name,color=color))
     project.save();return {'id':lid,'name':name}
 
 class Assign(BaseModel):image_id:str;candidate_id:int;layer_id:int|None;instance_id:str|None=None;reviewed:bool=False;mode:str='add';replace_id:int|None=None
@@ -251,6 +267,11 @@ def assign(body:Assign):
         project.assert_editable(item)
         if project.locked(body.layer_id):raise ValueError('대상 레이어가 잠겨 있습니다.')
         if body.mode not in ('add','replace','split'):raise ValueError('적용 방식 오류')
+        if item.get('source')=='brush-preview' and item.get('parent'):
+            parent=brush_origin(body.image_id,item)
+            from .labels import protection
+            delta=project.mask(body.image_id,item['id'])^project.mask(body.image_id,parent['id'])
+            if (delta&protection(project,body.image_id)).any():raise ValueError('미리보기 이후 보호/잠금 영역이 변경되었습니다. 브러시를 다시 적용하세요.')
         if body.mode in ('replace','split'):
             target=project.candidate(body.image_id,body.replace_id or item.get('parent') or 0)
             if not target or target['id']==item['id'] or not target.get('active',True):raise ValueError('현재 활성 상태인 부모 후보를 지정하세요. 이미 교체된 부모는 다시 교체할 수 없습니다.')
@@ -263,8 +284,10 @@ def assign(body:Assign):
             target.update(active=False,reviewed=False)
         item.update(layer_id=body.layer_id,instance_id=body.instance_id,reviewed=body.reviewed,active=True,stale_reason=None)
         if item.get('pending_protection'):
-            from .labels import protection,pack,unpack
-            guard=protection(project,body.image_id);project.state['protected'][body.image_id]=pack(guard|unpack(item.pop('pending_protection'),guard.shape))
+            from .labels import pack,unpack
+            shape=project.mask(body.image_id,item['id']).shape
+            guard=unpack(project.state['protected'].get(body.image_id),shape)
+            project.state['protected'][body.image_id]=pack(guard|unpack(item.pop('pending_protection'),shape))
         project.save();return item
     except ValueError as e:fail(e)
 
@@ -325,6 +348,7 @@ class PreparedRun(BaseModel):
     manual_points:list[list[float]]=Field(default_factory=list)
     box:list[float]|None=None
     manual_mode:str='object'
+    manual_groups:list[dict]=Field(default_factory=list)
     pred_iou:float=Field(default=.90,ge=0,le=1)
     stability:float=Field(default=.92,ge=0,le=1)
     nms:float=Field(default=.8,ge=0,le=1)
@@ -340,22 +364,26 @@ def run_prepared(body:PreparedRun):
         if body.manual_mode not in ('object','independent'):raise ValueError('잘못된 수동점 실행 방식')
         if body.box is not None:
             if len(body.box)!=4 or not (0<=body.box[0]<body.box[2]<=w and 0<=body.box[1]<body.box[3]<=h):raise ValueError('잘못된 box')
-        template=effective_template(project,body.image_id);ex=excluded((h,w),template)
+        from .services.recipe_groups import validate_groups, infer_groups
+        groups=validate_groups(body.manual_groups,w,h)
+        template=effective_template(project,body.image_id);ex=exclusion_mask(project,body.image_id)
         auto=[p for p in body.auto_points if not ex[int(p[1]),int(p[0])]];manual=[p for p in body.manual_points if not ex[int(p[1]),int(p[0])]]
         if body.manual_mode=='independent':
             if body.box or any(p[2]==0 for p in manual):raise ValueError('음성점·box는 한 객체로 묶기 모드에서 사용하세요.')
             auto += [p[:2] for p in manual];manual=[]
-        if not auto and not manual and body.box is None:raise ValueError('Grid/ML/수동점 또는 box를 먼저 준비하세요.')
+        if not auto and not manual and body.box is None and not groups:raise ValueError('Grid/ML/수동점 또는 box를 먼저 준비하세요.')
         template=effective_template(project,body.image_id)
-        prepared={'auto_points':auto,'manual_points':manual,'box':body.box,'manual_mode':body.manual_mode}
+        prepared={'auto_points':auto,'manual_points':manual,'box':body.box,'manual_mode':body.manual_mode,'manual_groups':groups}
         result=[]
         if auto:
-            items=model.automatic(im,pred_iou=body.pred_iou,stability=body.stability,nms=body.nms,exclude=excluded((h,w),template),prepared_points=auto)
+            items=model.automatic(im,pred_iou=body.pred_iou,stability=body.stability,nms=body.nms,exclude=ex,prepared_points=auto)
             for item in items:
                 result.append(save_prediction(project,body.image_id,item,'prepared-auto',prompts={**prepared,'stability':item['stability']}))
         if manual or body.box:
             item=model.prompt(im,manual,body.box)
             result.append(save_prediction(project,body.image_id,item,'manual',prompts=prepared))
+        for item,group in infer_groups(model,im,groups,ex):
+            result.append(save_prediction(project,body.image_id,item,'manual-group',prompts=group))
         project.state.setdefault('prepared_prompts',{})[body.image_id]=prepared;project.save()
         return {'count':len(result),'created':result}
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
@@ -475,3 +503,7 @@ roi_reviews.install(app,model_lock,lambda r:save_prediction(project,r['image_id'
 
 from .routes.workflow import install as install_workflow
 install_workflow(app,project,model,model_lock,transaction_gate)
+from .routes.workbench import install as install_workbench
+install_workbench(app,project)
+from .routes.roi_auto import install as install_roi_auto
+install_roi_auto(app,project,model,model_lock,roi_reviews)

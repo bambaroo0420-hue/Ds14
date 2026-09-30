@@ -1,4 +1,12 @@
-# TEM Analyzer v2.2.9 — 저장 복구·실행 진단·스케일 검토
+# TEM Analyzer v2.3.0 — 시각화 워크벤치·Manual 그룹·Recipe v2
+
+새 버전 변경/검증: [V230_IMPLEMENTATION_KO.md](docs/V230_IMPLEMENTATION_KO.md). 실제 조작 순서와 버튼 설명: [V230_USER_GUIDE_KO.md](docs/V230_USER_GUIDE_KO.md).
+
+요청 누락·의도 일치·코드의 완성 후 재검토: [V230_FINAL_REVIEW_KO.md](docs/V230_FINAL_REVIEW_KO.md). **모든 논의 요구의 완성판은 아니며** 부분/미구현 항목을 명시합니다.
+
+기존 Grid/feature 일괄 SAM, 프롬프트 재사용, 부분 GT 및 선택 마스크 회전·계측 기능은 유지됩니다. 새 UI는 원본 영상 위에 마스크/GT 진단을 표시하고 실제 회전 기준점·치수선을 별도 창에서 보여줍니다. 자동 결과는 재료 정답이 아니며 검수가 필요합니다.
+
+v2.3.0에 통합: [레이어별 브러시 잠금·두 층 사이 Gradient/DP 빈틈 보정 사용법과 검증](docs/GAP_BRIDGE_AND_LOCKS_KO.md). 내부 구멍 자동 채움은 포함하지 않습니다. 해당 문서의 로컬 검토 시점 기록과 현재 배포 상태는 구분하세요.
 
 Windows 소스 ZIP은 압축을 푼 뒤 처음 한 번 `install_windows.bat`, 이후에는 `start_windows.bat`으로 실행합니다. 패키지·가중치는 ZIP에 포함하지 않습니다. 문제가 생기면 `diagnose_windows.bat`과 [설치 안내](docs/INSTALL_KO.md)를 확인하세요. 기존 프로젝트·가중치는 별도 백업하고, 새 버전은 새 폴더에 설치하세요.
 

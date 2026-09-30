@@ -113,7 +113,7 @@ def install(app,project,model,model_lock):
                 except Exception:
                     pass
             if (
-                path in ('/api/workflow/rotation/compare', '/api/workflow/export', '/api/workflow/scales/review')
+                path in ('/api/workflow/rotation/compare', '/api/workflow/export', '/api/workflow/scales/review','/api/sam/roi-auto/preview')
                 or (path == '/api/sam/prompt' and body.get('preview'))
                 or (path.startswith('/api/roi-previews/') and request.method == 'DELETE')
             ):
@@ -121,7 +121,7 @@ def install(app,project,model,model_lock):
 
             before = copy.deepcopy(project.state) if transactional else None
             start = time.perf_counter()
-            deferred = transactional and path == '/api/sam/prepared'
+            deferred = transactional and path in ('/api/sam/prepared','/api/sam/roi-auto/accept')
             if transactional:
                 project.checkpoint(path)
             if deferred:

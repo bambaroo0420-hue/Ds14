@@ -1,0 +1,29 @@
+/* v2.3 instrument layout; existing page controls remain functional. */
+.instrument-ui main{grid-template-columns:280px minmax(280px,1fr) 360px}
+.instrument-ui header{flex-wrap:wrap;height:70px;gap:8px;padding:6px 12px}
+.instrument-ui header #status{max-width:250px;font-size:12px;overflow:hidden}
+.instrument-ui main{height:calc(100vh - 118px)}
+.instrument-ui header label{display:flex;gap:6px;align-items:center}
+.instrument-ui header #layerSelect{max-width:180px}
+#workbenchRail{padding:8px;background:#e9eff5;border-right:1px solid #9eafbf;resize:horizontal;min-width:240px;max-width:500px;font-size:12px}
+#workbenchRail button{font-size:12px;padding:5px 7px}
+#workbenchRail label{display:block;margin:6px 0}
+#workbenchRail select{max-width:100%}
+#dockHandle{display:flex;align-items:center;gap:4px;position:sticky;top:-8px;background:#d8e5ef;padding:8px 0;z-index:2;cursor:move;touch-action:none}
+#dockHandle strong{flex:1}
+#workbenchRail.floating{position:fixed;left:30px;top:150px;width:320px;height:65vh;resize:both;z-index:10;box-shadow:0 6px 30px #10253d55;border:1px solid #456b8a;border-radius:8px}
+.instrument-ui.floating-rail main{grid-template-columns:minmax(280px,1fr) 360px}
+.layer-members{font-size:11px;clear:both;overflow-wrap:anywhere;max-height:60px;overflow:auto}
+#layerDrops .drop-target{outline:3px solid #259ce3;background:#caf2ff}
+#layerDrops .current-layer{box-shadow:inset 0 0 0 2px #376f9a}
+#contextStrip{padding:6px 10px;background:#263e53;color:#e1f5ff;font-size:12px}
+.recipe-save{background:#6c3da5!important;color:#fff!important}
+#evidenceDialog img{width:100%;object-fit:contain;max-height:65vh}
+#evidenceInfo{overflow-wrap:anywhere;font-size:12px}
+#measureRows tr{cursor:pointer}#measureRows tr:hover{background:#d6f1ff}
+#textInputDialog{max-width:500px}#textInputDialog input{display:block;width:100%;margin:12px 0}
+@media(max-width:1100px){.instrument-ui main{grid-template-columns:240px minmax(240px,1fr) 310px}}
+@media(max-width:850px){.instrument-ui main{display:flex;height:auto}.instrument-ui header{height:auto}#workbenchRail{max-width:none;max-height:280px;width:100%;resize:vertical}.instrument-ui .workspace{height:60vh}}
+/* Separate pointer drag handle keeps list selection and cross-panel drag unambiguous. */
+.mask-drag-handle{padding:0 5px;margin-right:4px;min-width:20px;cursor:grab;touch-action:none;user-select:none}
+.mask-drag-handle:active{cursor:grabbing}

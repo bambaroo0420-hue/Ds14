@@ -37,7 +37,22 @@ def install(app,project,model,model_lock,gate):
     def detect(iid,settings):
         from ..ocr import read_words
         image=project.image(iid)
-        words=read_words(image,settings.get('ocr_dir','models/easyocr'),settings.get('language','en'),enhanced=bool(settings.get('enhanced_ocr',True)))
+        roi=settings.get('retry_roi')
+        if roi is not None:
+            from PIL import Image,ImageOps
+            h,w=image.shape[:2]
+            if len(roi)!=4 or not np.isfinite(roi).all() or not(0<=roi[0]<roi[2]<=1 and 0<=roi[1]<roi[3]<=1):raise ValueError('OCR 재검출 ROI 범위 오류')
+            x0,y0,x1,y1=np.rint(np.array(roi)*[w,h,w,h]).astype(int)
+            if min(x1-x0,y1-y0)<8:raise ValueError('OCR ROI는 가로·세로 8px 이상 필요합니다.')
+            crop=np.asarray(ImageOps.autocontrast(Image.fromarray(image[y0:y1,x0:x1])))
+            found=read_words(crop,settings.get('ocr_dir','models/easyocr'),settings.get('language','en'),enhanced=True)
+            words=[]
+            for word in project.state['annotation_proposals'].get(iid,{}).get('words',[]):
+                a,b,c,d=word['box']
+                if not(x0<(a+c)/2<x1 and y0<(b+d)/2<y1):words.append(copy.deepcopy(word))
+            for word in found:
+                word=copy.deepcopy(word);word['box']=(np.array(word['box'])+[x0,y0,x0,y0]).tolist();word['ocr_pass']='local-autocontrast-upscale';words.append(word)
+        else:words=read_words(image,settings.get('ocr_dir','models/easyocr'),settings.get('language','en'),enhanced=bool(settings.get('enhanced_ocr',True)))
         proposal=propose_annotations(image,words)
         proposal['input_hash']=fingerprint(project,iid)
         project.state['annotation_proposals'][iid]=proposal
@@ -45,13 +60,13 @@ def install(app,project,model,model_lock,gate):
 
     def apply_annotations(iid,proposal):
         if proposal.get('input_hash')!=fingerprint(project,iid):raise ValueError('검출 후 입력이 바뀌었습니다. 다시 검출하세요.')
+        # Exclusion review and calibration review are separate operations. Applying
+        # boxes must never destroy a manually confirmed calibration (or mark it failed).
         project.state['preprocessing'][iid].update(auto_regions=copy.deepcopy(proposal['template']),regions_applied=True,
-            reviewed=False,scale_requested=True,scale_status='proposed' if proposal['scale'].get('nm_per_px') else 'failed')
-        # Failed detection must not leave an old confirmed calibration usable.
-        project.state['scale'][iid]=copy.deepcopy(proposal['scale'])
+            reviewed=False)
         project.state['preprocessing'][iid]['excluded_pixels']=int(exclusion_mask(project,iid).sum())
         project.invalidate(iid,'자동 제외 영역 적용')
-        return {'regions':len(proposal['regions']),'scale':project.state['scale'][iid]}
+        return {'regions':len(proposal['regions']),'scale':project.state['scale'].get(iid,{}),'scale_applied':False}
 
     def require_gt(iid,scope_id=None):
         if scope_id:return require_scope_review(project,iid,scope_id)
@@ -65,7 +80,7 @@ def install(app,project,model,model_lock,gate):
         if stage=='prompt_transfer':
             cfg=settings.get('prompt_transfer',{});value=prepare_transfer(project,iid,cfg.get('preset_id',''),cfg.get('method','normalized'))
             return dict(status='needs_prompt_review',preset_id=value['preset_id'],ecc_score=value['ecc_score'],inference_run=False,
-                        prompt_count=len(value['draft']['auto_points'])+len(value['draft']['manual_points']),warnings=value['warnings'])
+                        prompt_count=len(value['draft']['auto_points'])+len(value['draft']['manual_points'])+sum(len(g['points']) for g in value['draft'].get('manual_groups',[])),warnings=value['warnings'])
         if stage=='annotations':
             proposal=detect(iid,settings)
             if settings.get('apply_annotations'):apply_annotations(iid,proposal)
@@ -126,6 +141,23 @@ def install(app,project,model,model_lock,gate):
 
     @app.post('/api/workflow/annotations/detect')
     def annotations_detect(body:dict):return detect(body['image_id'],body)
+
+    @app.post('/api/workflow/annotations/manual-box')
+    def manual_annotation_box(body:dict):
+        iid=body['image_id'];image=project.image(iid);h,w=image.shape[:2];roi=body['roi']
+        if len(roi)!=4 or not np.isfinite(roi).all() or not(0<=roi[0]<roi[2]<=1 and 0<=roi[1]<roi[3]<=1):raise ValueError('수동 제외 box 범위 오류')
+        proposal=copy.deepcopy(project.state['annotation_proposals'].get(iid) or propose_annotations(image,[]))
+        if proposal.get('input_hash') not in (None,fingerprint(project,iid)):raise ValueError('기존 검출 제안이 만료되었습니다. 먼저 다시 검출하세요.')
+        kind=body.get('kind','text')
+        if kind not in ('text','footer','magnification','scale'):raise ValueError('영역 종류 오류')
+        value=dict(kind=kind,box=(np.array(roi)*[w,h,w,h]).tolist(),roi=roi,text='manual review',recommended=True,reason='사용자 지정 제외 박스 · 축척 계산 아님',confidence=None)
+        index=body.get('region_index')
+        if index is None:proposal['regions'].append(value)
+        elif type(index)!=int or not 0<=index<len(proposal['regions']):raise ValueError('수정할 박스 번호 오류')
+        else:proposal['regions'][index]=value
+        proposal['template']={'scale_roi':None,'text_rois':[r['roi'] for r in proposal['regions'] if r.get('recommended',True)]}
+        proposal['input_hash']=fingerprint(project,iid);project.state['annotation_proposals'][iid]=proposal
+        return proposal
 
     @app.post('/api/workflow/templates/enabled')
     def templates_enabled(body:dict):
@@ -188,7 +220,9 @@ def install(app,project,model,model_lock,gate):
 
     @app.post('/api/workflow/prompt-presets/save')
     def preset_save(body:dict):
-        return save_preset(project,body['image_id'],body['preset_id'],body['draft'])
+        value=save_preset(project,body['image_id'],body['preset_id'],body['draft'])
+        value['model_identity']=copy.deepcopy(model.info)
+        return value
 
     @app.post('/api/workflow/prompt-presets/preview')
     def preset_preview(body:dict):
@@ -221,7 +255,8 @@ def install(app,project,model,model_lock,gate):
     def boundary_preview(body:dict):
         iid=body['image_id'];p=propose_boundaries(project,iid,body.get('settings'),body.get('roi'));token=uuid.uuid4().hex
         proposals.clear();proposals[token]=(iid,p)
-        return dict(token=token,reports=p['reports'],changed_pixels=p['changed_pixels'])
+        return dict(token=token,reports=p['reports'],changed_pixels=p['changed_pixels'],
+                    requires_two_layer_confirmation=p.get('requires_two_layer_confirmation',False))
 
     @app.get('/api/workflow/boundary/{token}.png')
     def boundary_image(token:str):
@@ -231,12 +266,20 @@ def install(app,project,model,model_lock,gate):
             if layer['id'] in p['masks']:
                 mask=p['masks'][layer['id']];color=np.array(list(bytes.fromhex(layer['color'][1:])))
                 rgb[mask]=rgb[mask]*.5+color*.5
+        if p.get('requires_two_layer_confirmation'):
+            from PIL import Image,ImageDraw
+            rgb[p['changed']]=rgb[p['changed']]*.3+np.array([255,80,190])*.7
+            im=Image.fromarray(rgb.astype('uint8'));draw=ImageDraw.Draw(im)
+            for trace in p.get('traces',[]):
+                for key,color in [('edge_a','white'),('edge_b','#ffc55c'),('path','#00ffff')]:
+                    if len(trace[key])>1:draw.line([tuple(v) for v in trace[key]],fill=color,width=1)
+            return Response(image_bytes(np.asarray(im)),media_type='image/png')
         return Response(image_bytes(rgb.astype('uint8')),media_type='image/png')
 
     @app.post('/api/workflow/boundary/apply')
     def boundary_apply(body:dict):
         if body['token'] not in proposals:raise ValueError('미리보기가 만료되었습니다.')
-        iid,p=proposals[body['token']];value=apply_boundaries(project,iid,p);proposals.clear();return value
+        iid,p=proposals[body['token']];value=apply_boundaries(project,iid,p,body.get('confirmed_two_layers',False));proposals.clear();return value
 
     @app.post('/api/workflow/rotation/preview')
     def rotation_preview(body:dict):

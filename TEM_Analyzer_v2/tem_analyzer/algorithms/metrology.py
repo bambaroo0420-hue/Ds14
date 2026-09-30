@@ -59,7 +59,8 @@ def robust_line(points):
     angle = math.degrees(math.atan2(direction[1],direction[0]))
     angle = (angle+90)%180-90
     return dict(angle_deg=angle, residual_px=float(np.sqrt(np.average(residual**2,weights=weights))),
-                anisotropy=float(vals[-1]/max(vals[0],1e-9)), points=p.tolist())
+                anisotropy=float(vals[-1]/max(vals[0],1e-9)), points=p.tolist(),
+                center=center.tolist(),direction=direction.tolist(),weights=weights.tolist(),residuals=residual.tolist())
 
 
 def edge_points(mask, edge='top', roi=None):

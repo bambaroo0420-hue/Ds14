@@ -56,6 +56,8 @@ def inspect_conflicts(project,iid,max_gap=4):
 
 
 def propose_boundaries(project,iid,settings=None,region=None):
+    if (settings or {}).get('method')=='gradient_bridge':
+        return propose_gap_bridge(project,iid,settings,region)
     cfg=dict(settings or {});radius=float(cfg.get('radius',8));gap=float(cfg.get('max_gap',0))
     if not 1<=radius<=50 or not 0<=gap<=30:raise ValueError('경계 폭 1~50 px, 허용 틈 0~30 px')
     masks=unions(project,iid);result={k:v.copy() for k,v in masks.items()}
@@ -112,8 +114,38 @@ def propose_boundaries(project,iid,settings=None,region=None):
                 changed_pixels=sum(int((result[k]!=masks[k]).sum()) for k in masks))
 
 
-def apply_boundaries(project,iid,proposal):
+def propose_gap_bridge(project,iid,settings,region=None):
+    from ..algorithms.gap_bridge import bridge
+    cfg=dict(settings);a=cfg.get('layer_a');b=cfg.get('layer_b')
+    masks=unions(project,iid)
+    if type(a) is not int or type(b) is not int or a==b or a not in masks or b not in masks:
+        raise ValueError('활성 마스크가 있는 서로 다른 두 레이어를 선택하세요.')
+    if project.locked(a) or project.locked(b):raise ValueError('선택 레이어가 잠겨 있습니다. 잠금을 먼저 확인하세요.')
+    labels,_,_=compose(project,iid);guard=protection(project,iid)|(labels==EXCLUDED)
+    guard|=crop_guard(project,iid,[c for c in active(project,iid) if c['layer_id'] is not None])
+    for value in project.state['annotations'].get(iid,{}).values():guard|=unpack(value,guard.shape)
+    for lid,m in masks.items():
+        if lid not in (a,b):guard|=m
+    if region:
+        if len(region)!=4 or not np.isfinite(region).all() or not(0<=region[0]<region[2]<=1 and 0<=region[1]<region[3]<=1):
+            raise ValueError('부분 보정 ROI는 0~1 좌표입니다.')
+        h,w=guard.shape;x0,y0,x1,y1=(np.array(region)*[w,h,w,h]).astype(int)
+        keep=np.zeros_like(guard);keep[y0:y1,x0:x1]=True;guard|=~keep
+    # Bounds are provided by user-selected layers, not the layer-list order.
+    value=bridge(model_input(project,iid,'edge'),masks[a],masks[b],guard,cfg)
+    result={lid:m.copy() for lid,m in masks.items()};result[a]=value.pop('mask_a');result[b]=value.pop('mask_b')
+    changed=value.pop('changed')
+    return dict(masks=result,changed=changed,reports=[dict(layer_a=a,layer_b=b,
+        status='proposed_review_required' if value['filled_pixels'] else 'manual_review',**value)],
+        input_hash=fingerprint(project,iid),settings=cfg,changed_pixels=value['filled_pixels'],
+        requires_two_layer_confirmation=True,traces=value['traces'])
+
+
+def apply_boundaries(project,iid,proposal,confirmed_two_layers=False):
     if proposal['input_hash']!=fingerprint(project,iid):raise ValueError('입력이 변경되었습니다. 경계를 다시 제안하세요.')
+    if proposal.get('requires_two_layer_confirmation'):
+        if confirmed_two_layers is not True:raise ValueError('두 층 사이에 제3층/공극이 없고 분할 누락임을 확인한 뒤 적용하세요.')
+        if not proposal['changed_pixels']:raise ValueError('적용할 빈틈 보정안이 없습니다. 경고를 검토하세요.')
     created=[]
     for lid,new_union in proposal['masks'].items():
         candidates=active(project,iid,lid)

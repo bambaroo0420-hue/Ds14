@@ -70,6 +70,7 @@ def alignment(project,iid,config):
         if len(points)<2:raise ValueError('프레임/제외 영역을 제외한 유효 경계가 부족합니다. 다른 경계·ROI·직접 기준점을 선택하세요.')
         fit=robust_line(points)
     else:raise ValueError('회전 방식은 auto/edge/objects/points/image_direction입니다.')
+    if len(fit.get('points',[]))==2:warnings.append('두 점은 항상 직선을 정의하므로 잔차 0은 정확도 증거가 아닙니다. 세 개 이상 대응점 또는 긴 경계 구간으로 교차 검토하세요.')
     target=float(config.get('target_angle',0))
     if not np.isfinite(target) or not -90<=target<=90:raise ValueError('목표 방향은 -90~90도입니다.')
     angle=(target-fit['angle_deg']+90)%180-90

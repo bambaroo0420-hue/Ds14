@@ -1,4 +1,4 @@
-import {mountRotationComparison} from './rotation_compare.js?v=2.2.9';
+import {mountRotationComparison} from './rotation_compare.js?v=2.3.0';
 // Decode off-screen first so a comparison is never presented as ready while
 // its image is still loading. This does not repair an incorrect server image.
 export function prepareComparisonImage(url,label,timeoutMs=15000){
@@ -68,7 +68,7 @@ export function mountMetrology(T) {
     }).catch(e=>T.say(e.message))}
   }
   function showRows(result){$('measureRows').innerHTML=result.rows.slice(0,300).map(r=>`<tr><td>${r.position_px.toFixed(2)}</td><td>${r.segment??'—'} / 객체 ${r.component_id??'—'}</td><td>${r.length_nm==null?'—':r.length_nm.toFixed(4)}${r.length_nm==null&&r.raw_length_nm!=null?' (제외 원시값 '+r.raw_length_nm.toFixed(4)+')':''}</td><td>${T.escape([...new Set([r.status,...(r.quality_flags||[])])].map(statusName).join(' · '))}${r.invalid_coverage_px>1e-7?' · 무효 구간 '+r.invalid_coverage_px.toFixed(4)+' px':''}</td></tr>`).join('')}
-  $('rotationUseROI').onclick=()=>{$('rotationROI').value=JSON.stringify(T.boundaryROI);T.say('SAM ROI 도구로 지정한 원본 구간을 사용합니다.')};
+  $('rotationUseROI').onclick=()=>{const roi=T.boundaryROI;if(!roi){T.say('입력 방식에서 경계/회전 ROI 드래그를 선택하고 메인 영상에 구간을 먼저 그리세요. 기존 회전 ROI는 유지했습니다.');return;}$('rotationROI').value=JSON.stringify(roi);T.say('메인 영상의 경계/회전 ROI를 원본 좌표 구간으로 사용합니다.')};
   $('rotationPreview').onclick=()=>T.task(async()=>{await T.api('workflow/rotation/preview',{image_id:T.current,config:rotationConfig()});await T.refresh()});
   $('rotationConfirm').onclick=()=>T.task(async()=>{await T.api('workflow/rotation/confirm',{image_id:T.current});await T.refresh()});
   $('runMeasure').onclick=()=>T.task(async()=>{await T.api('workflow/measurement',{image_id:T.current,config:measurementConfig()});await T.refresh()});

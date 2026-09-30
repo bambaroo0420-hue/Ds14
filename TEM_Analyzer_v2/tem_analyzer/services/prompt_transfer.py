@@ -6,20 +6,27 @@ from ..prompts import validate_points
 from ..preprocessing import exclusion_mask
 from ..algorithms.metrology import transform_points
 from .scopes import scope_key
+from .recipe_groups import validate_groups
 
 
 def save_preset(project,iid,key,draft):
     image=project.image(iid);h,w=image.shape[:2];key=scope_key(key)
     auto=draft.get('auto_points',[]);manual=draft.get('manual_points',[]);box=draft.get('box')
+    groups=validate_groups(draft.get('manual_groups',[]),w,h)
+    policy=draft.get('auto_policy','reuse');grid=int(draft.get('grid',16))
+    if policy not in ('reuse','grid','features','grid_features') or not 2<=grid<=32:raise ValueError('Recipe 자동점 정책/Grid 범위 오류')
     if len(auto)+len(manual)>2048:raise ValueError('프롬프트는 최대 2048개입니다.')
     validate_points(auto,w,h);validate_points(manual,w,h)
     if any(len(p)!=3 or p[2] not in (0,1) for p in manual):raise ValueError('수동점은 [x,y,0 또는 1]입니다.')
     if box is not None and (len(box)!=4 or not np.isfinite(box).all() or not(0<=box[0]<box[2]<=w and 0<=box[1]<box[3]<=h)):raise ValueError('box 범위 오류')
     mode=draft.get('manual_mode','object')
     if mode not in ('object','independent') or (mode=='independent' and (box or any(p[2]==0 for p in manual))):raise ValueError('독립 양성점 방식에 음성점/box를 넣을 수 없습니다.')
-    if not auto and not manual and box is None:raise ValueError('저장할 프롬프트가 없습니다.')
+    if not auto and not manual and box is None and not groups and policy=='reuse':raise ValueError('저장할 프롬프트가 없습니다.')
     value=dict(id=key,source_image=iid,source_shape=[h,w],source_sha256=hashlib.sha256(image.tobytes()).hexdigest(),
-               draft=copy.deepcopy(dict(auto_points=auto,manual_points=manual,box=box,manual_mode=mode)),
+               schema_version=2,
+               draft=copy.deepcopy(dict(auto_points=auto,manual_points=manual,box=box,manual_mode=mode,manual_groups=groups)),
+               auto_policy=policy,grid=grid,
+               sam_filter=copy.deepcopy(project.state['preprocessing'][iid].get('sam_filter')),
                feature_settings=copy.deepcopy(draft.get('feature_settings',{})))
     project.state.setdefault('prompt_presets',{})[key]=value
     return value
@@ -125,6 +132,32 @@ def preview_preset(project,iid,key,method='normalized'):
         draft['box']=[float(lo[0]),float(lo[1]),float(hi[0]),float(hi[1])]
         if method in ('ecc','ecc_masked'):warnings.append('회전된 box는 축 정렬 외접 box로 변환됩니다.')
     if dropped:warnings.append(f'영상 밖/제외 영역의 자동점 {dropped}개를 제외했습니다.')
-    if not draft['auto_points'] and not draft['manual_points'] and draft['box'] is None:raise ValueError('재사용 후 유효 프롬프트가 없습니다.')
+    groups=[]
+    for group in draft.get('manual_groups',[]):
+        g=copy.deepcopy(group);g['points']=[list(map(float,transform_points([p[:2]],matrix)[0]))+[p[2]] for p in g['points']]
+        for name in ('box','roi'):
+            if g.get(name) is None:continue
+            b=np.array(g[name],float)
+            if name=='roi':b*=np.array([source.shape[1],source.shape[0]]*2)
+            corners=transform_points([[b[0]-.5,b[1]-.5],[b[2]-.5,b[1]-.5],[b[2]-.5,b[3]-.5],[b[0]-.5,b[3]-.5]],matrix)+.5
+            b=np.r_[corners.min(axis=0),corners.max(axis=0)]
+            if (b[:2]<-1e-7).any() or (b[2:]>np.array([w,h])+1e-7).any():raise ValueError('옮긴 그룹 box/ROI가 영상 밖입니다.')
+            b=np.clip(b,0,[w,h,w,h]);g[name]=(b/[w,h,w,h] if name=='roi' else b).tolist()
+        groups.append(g)
+    draft['manual_groups']=validate_groups(groups,w,h)
+    if any(ex[int(p[1]),int(p[0])] for g in groups for p in g['points']):raise ValueError('옮긴 그룹 점이 제외 영역에 있습니다.')
+    policy=preset.get('auto_policy','reuse')
+    draft.update(auto_policy=policy,grid=preset.get('grid',16),feature_settings=copy.deepcopy(preset.get('feature_settings',{})))
+    if policy!='reuse':
+        from ..prompts import grid_points
+        from ..preprocessing import model_input
+        from ..feature_prompts import FeatureConfig,propose as feature_proposals
+        draft['auto_points']=grid_points((h,w),preset.get('grid',16),ex) if policy in ('grid','grid_features') else []
+        if policy in ('features','grid_features'):
+            proposal=feature_proposals(model_input(project,iid,'prompt'),ex,draft['auto_points'],FeatureConfig(**preset.get('feature_settings',{})))
+            draft['auto_points']+=proposal['points']
+        warnings.append('대상 영상에서 자동점을 새로 계산했습니다. 저장한 수동 그룹은 좌표 변환하여 함께 사용합니다.')
+    if not draft['auto_points'] and not draft['manual_points'] and draft['box'] is None and not groups:raise ValueError('재사용 후 유효 프롬프트가 없습니다.')
+    warnings.append('SAM 전처리는 대상 영상에 저장된 설정을 사용합니다. Recipe의 기준 설정은 기록용이며 자동 덮어쓰기하지 않습니다.')
     return dict(draft=draft,matrix=matrix.tolist(),method=method,ecc_score=score,warnings=warnings,
                 source_image=preset['source_image'],target_image=iid,preset_id=key,inference_run=False)
