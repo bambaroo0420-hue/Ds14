@@ -1,5 +1,59 @@
 # 설치와 회사 오프라인 실행
 
+## 회사 GPU 서버와 setup.ipynb
+
+`TEM_Analyzer_v2` 전체 폴더를 회사 서버의 쓰기 가능한 작업 경로에 올리고, 루트의 `setup.ipynb`를 JupyterLab에서 엽니다. 노트북 한 파일만으로 앱이 설치되는 것은 아닙니다. `tools/server_setup.py`, `tem_analyzer`, `web`, `adaptation_backend`, requirements 등이 함께 있어야 합니다. 이 노트북은 Analyzer 실행용이며 ABL 학습/데이터 분할/GT 변환을 다시 실행하지 않습니다.
+
+### ABL 1.4에서 가져올 것
+
+| 용도 | ABL 쪽 파일 | Analyzer 배치 위치 |
+|---|---|---|
+| 기본 SAM (필수) | `weights/sam_vit_h_4b8939.pth` | `models/sam_vit_h_4b8939.pth` |
+| 학습 Decoder 또는 Refiner (선택) | `02_evaluate_export.ipynb`에서 내보낸 폴더의 `adaptation.pt` | `models/abl14/decoder_abl/adaptation.pt` 등 실험별 별도 폴더 |
+| 학습 설정 기록 (선택) | export 폴더의 `inference_settings.json`, `model_manifest.json` | 해당 `adaptation.pt` 옆, 추적·참고용 (UI가 JSON을 자동 적용하지 않음) |
+| OCR 검출 (OCR 사용 시 필수) | ABL 패키지에는 미포함 | `models/easyocr/craft_mlt_25k.pth` |
+| OCR 영어 인식 (OCR 사용 시 필수) | ABL 패키지에는 미포함 | `models/easyocr/english_g2.pth` |
+
+기본 SAM만 사용할 때는 `ADAPTATION=''`로 둡니다. 실험 이름은 예시이며 실제 ABL export 경로는 그 노트북의 출력값을 확인하세요. `runs/.../best.pt`도 동일 schema=1 bundle인 경우 로더가 받을 수 있지만, 추론 설정을 반영한 export `adaptation.pt`를 우선 사용하세요. 서로 다른 실험의 `adaptation.pt`를 같은 폴더에 덮어쓰지 마세요. decoder와 refiner를 동시에 결합하는 설정은 아닙니다.
+
+학습 시 사용한 기본 SAM 파일과 SHA256, `model_type`, `preprocessing=uint8`, state 구조가 맞아야 합니다. `adaptation.pt`는 기본 SAM을 대체하지 않습니다. ViT-H로 학습한 decoder를 ViT-B 가중치에 연결할 수 없습니다. ABL의 `temlab`, `vendor`, `requirements.txt`, `.venv`, `config.local.json`, 학습 이미지/GT/cache를 Analyzer에 덮어쓸 필요가 없습니다. 필요한 SAM 소스와 Refiner 코드는 Analyzer에 포함되어 있습니다. 학습 시 `encoder_amp`와 현재 Analyzer 추론 정밀도 차이가 있으므로 같은 형식의 bundle을 읽는 것과 수치가 완전히 같은 것은 구분하세요.
+
+이미 같은 서버에 가중치가 있으면 복사 대신 노트북의 `SAM_CHECKPOINT`/`ADAPTATION`에 절대 경로를 넣어도 됩니다. 기존 프로젝트 이전은 `project.json`, images, masks 등 **프로젝트 폴더 전체**를 복사한 뒤 `PROJECT_DIR`로 지정합니다. 원본 사진만 가져오는 경우는 UI에서 업로드합니다. 자동으로 ABL 학습 데이터나 Analyzer 프로젝트를 덮어쓰지 않습니다.
+
+### 실행 순서
+
+1. ABL이 정상 동작했던 CUDA 커널을 선택하고 Python 3.11 이상/64-bit인지 확인합니다. 학습 프로세스가 실행 중인 환경에 패키지를 설치하지 마세요. 별도 환경 복제가 가능하면 그 환경을 사용합니다.
+2. 최초 패키지 보충 때만 `INSTALL_PACKAGES=True`로 실행합니다. torch/torchvision과 이미 설치된 주요 수치 패키지는 버전을 고정합니다. 호환성 충돌은 오류로 멈추며 강제 업그레이드하지 않습니다. 설치 중 다른 간접 의존성은 추가/변경될 수 있으므로 공유 학습 환경 변경은 서버 정책을 따르세요.
+3. 사내 미러는 `PACKAGE_INDEX`, 오프라인은 서버 OS/Python/CUDA에 맞는 `WHEELHOUSE`를 지정합니다. 기존 CUDA torch 쌍을 재다운로드하지 않습니다. 둘 다 없으면 IT가 승인한 정확한 `TORCH_PACKAGES`와 저장소를 지정해야 하며, CUDA 버전을 임의로 선택하지 않습니다. 둘 중 하나만 있으면 먼저 쌍을 복구해야 합니다.
+4. GPU 환경 검사에서 실제 CUDA tensor 연산과 torchvision NMS까지 확인합니다. `REQUIRE_CUDA=True`일 때 CUDA가 없으면 CPU로 조용히 전환하지 않고 중단합니다. CPU 시험은 명시적으로 False로 둡니다.
+5. 파일 검사, 합성 이미지의 실제 SAM 두 번 추론(첫 인코딩/임베딩 재사용), 선택적인 로컬 OCR을 검사합니다. 별도 Python 프로세스가 끝나면 테스트 모델 메모리가 해제됩니다. 결과는 실행 확인이지 회사 영상 정확도 증명이 아닙니다.
+6. `START_SERVER=True`로 실행하고 웹 UI에 접속합니다. 같은 Python으로 별도 프로세스를 실행하며, 모델은 선택적으로 서버에 한 번 로드합니다. CUDA 로드/OOM 오류가 나면 로그를 확인하세요. 실행 중 ABL 학습과 GPU 메모리를 경쟁할 수 있습니다.
+7. 다음 접속은 `INSTALL_PACKAGES=False`, 필요하면 `RUN_SAM_TEST=False`로 시작합니다. 패키지/가중치는 다시 설치·다운로드하지 않지만 새 서버 프로세스에는 모델 메모리 로드가 필요합니다.
+
+### 원격 UI 접속 — 회사 정책에 맞는 포트 전달
+
+서버는 인증 없는 앱을 외부에 노출하지 않도록 `127.0.0.1`만 사용합니다. 서버에서 출력된 localhost를 PC에서 바로 열면 **PC 자신**에게 연결되므로 포트 전달이 필요합니다.
+
+SSH가 허용된 경우 **사용자 PC 터미널**에서 (주소/계정은 본인 서버 값):
+
+```text
+ssh -N -L 8765:127.0.0.1:8765 USER@SERVER
+```
+
+그다음 PC 브라우저에서 `http://127.0.0.1:8765/`를 엽니다. VS Code Remote-SSH의 Ports 탭에서 **Private**로 포트 8765를 전달해도 됩니다. SSH 대상 호스트와 노트북 커널이 서로 다른 컨테이너/계산 노드라면 위 명령만으로 연결되지 않습니다. IT가 허용한 계산 노드 전달 경로가 필요합니다. 임의로 0.0.0.0, 공개 터널, 방화벽 개방, 인증서 검사 해제를 사용하지 마세요.
+
+**현재 UI는 `/api`, `/web` 루트 절대 경로를 사용하므로 일반 JupyterHub `/user/.../proxy/8765/` 링크만 붙이면 정상 동작한다고 보장할 수 없습니다.** 노트북은 그런 링크를 성공 링크처럼 제공하지 않습니다. SSH 없이 Jupyter 프록시만 가능한 회사 서버라면 URL-prefix 대응이 별도로 필요합니다. Jupyter Server Proxy는 커널 환경이 아니라 Jupyter 서버 환경에 설치/활성화되어야 하므로 노트북에서 자동 설치하지 않습니다. [공식 설치 안내](https://jupyter-server-proxy.readthedocs.io/en/latest/install.html), [프록시 경로 규칙](https://jupyter-server-proxy.readthedocs.io/en/latest/server-process.html).
+
+같은 프로젝트를 두 서버/여러 사용자가 동시에 편집하지 마세요. 노트북 재실행은 자신이 실행한 프로세스를 재사용하고 이미 사용 중인 다른 포트를 강제 종료하지 않습니다. 커널 재시작 시 Python의 프로세스 참조는 사라지지만 웹 서버가 남을 수 있습니다. 가능하면 UI 작업/저장을 마친 뒤 종료 셀을 실행하고 커널을 재시작하세요. Windows의 프로세스 종료는 강제 종료 방식이므로 저장 중 종료하지 마세요. 장기 운영·다중 사용자·로그인 기능·Jupyter idle 종료와 무관한 상시 서비스는 이 setup 노트북의 범위가 아닙니다.
+
+### GPU 성능과 검증 범위
+
+SAM의 이미지 인코딩·프롬프트 추론과 학습 Decoder/Refiner가 CUDA 대상입니다. OCR은 현재 `gpu=False`, Gradient/DP·회전·두께/CD는 NumPy/OpenCV 중심 CPU 처리입니다. 일괄 SAM은 GPU에서 이미지들을 순차 처리하며 여러 GPU에 자동 분산하지 않습니다. 속도 향상 배수는 GPU/이미지 크기/점 수에 따라 달라 실측 없이 보장하지 않습니다. ViT-H 메모리가 부족하면 먼저 다른 학습 프로세스의 점유를 확인하세요. H decoder를 유지한 채 기본 모델만 B로 바꾸면 안 됩니다. 새로 설치해야 할 CUDA 쌍은 [PyTorch 공식 선택기](https://pytorch.org/get-started/locally/)와 서버 IT의 드라이버 정책을 확인하세요.
+
+서버 setup 변경의 로컬 검증과 실제 회사 CUDA 서버 검증은 별개입니다. 실제 회사 ABL checkpoint 및 회사 GPU에서는 사용자가 위 환경/추론 셀을 실행해야 최종 호환성을 확인할 수 있습니다.
+
+2026-10-01 로컬 검증: 기존 198개와 setup 신규 15개를 포함한 Python 테스트 **213개 통과**(34.986초). 설치 스위치/기존 CUDA 버전 고정/오프라인 옵션/파일 누락/포트 충돌은 단위 테스트로 확인했으며, 회사 미러에 실제 설치한 것은 아닙니다. 노트북의 8개 코드 셀은 설치 생략·CPU 설정으로 실행하여 실제 모델 로드, UI HTML/JS/CSS 및 API HTTP 200, 재실행 시 동일 서버 재사용, 종료 후 포트 해제를 확인했습니다. 실제 로컬 ViT-B 합성 추론은 모델 로드 3.606초, 첫 추론 13.375초, 임베딩 재사용 0.105초였고 OCR도 실행했습니다. 이는 CPU 합성 시험 값이며 GPU 배속/회사 정확도를 나타내지 않습니다. CUDA 필수 설정에서는 CPU-only 환경을 정상적으로 차단했습니다. 회사 ABL 학습 파일·Linux CUDA·JupyterHub 프록시의 실구동은 미검증입니다.
+
 ## 최초 준비와 매일 실행
 
 ### v2.2.9 ZIP의 실행 순서와 오류 진단

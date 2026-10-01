@@ -5,7 +5,7 @@ from pathlib import Path
 
 root=Path(__file__).resolve().parents[1]
 excluded={'.git','.venv','__pycache__','test-output','projects','node_modules','wheelhouse','downloads','.pytest_cache'}
-source_suffixes={'.py','.js','.cjs','.css','.html','.md','.txt','.json','.bat','.cfg'}
+source_suffixes={'.py','.js','.cjs','.css','.html','.md','.txt','.json','.bat','.cfg','.ipynb'}
 source_names={'.gitignore','LICENSE','ABL_LICENSE'}
 items={}
 for p in sorted(root.rglob('*')):
