@@ -33,7 +33,7 @@ def build(root, output):
                         raise ValueError('Notebook must not contain local execution output')
                     ast.parse(''.join(cell['source']))
         contents[name] = raw.replace(b'\n', b'\r\n') if name.endswith('.bat') else raw
-    for name in ('setup.ipynb', 'tools/server_setup.py', 'run.py', 'web/index.html',
+    for name in ('setup.ipynb', 'run.py', 'web/index.html',
                  'adaptation_backend/vendor/segment-anything/segment_anything/__init__.py'):
         if name not in contents:
             raise ValueError(f'Missing required source: {name}')

@@ -1,5 +1,8 @@
 import ast
 import json
+import os
+import sys
+import types
 from pathlib import Path
 import socket
 import tempfile
@@ -7,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from tools import server_setup as setup
+from tools.validate_server_notebook import execute_cell
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,8 +29,71 @@ class ServerSetupTests(unittest.TestCase):
                 ast.parse(source, filename=f'setup.ipynb:cell{i}')
                 sources.append(source)
         joined = '\n'.join(sources)
-        for flag in ('INSTALL_PACKAGES = False', 'START_SERVER = False', 'STOP_SERVER = False'):
+        for flag in ('INSTALL_PACKAGES = True', 'START_SERVER = False', 'STOP_SERVER = False'):
             self.assertIn(flag, joined)
+        self.assertNotIn('from tools', joined)
+        self.assertNotIn('tools/server_setup.py', joined)
+
+    def notebook_cell(self, cell_id):
+        notebook = json.loads((ROOT / 'setup.ipynb').read_text(encoding='utf8'))
+        return next(c for c in notebook['cells'] if c['id'] == cell_id)
+
+    def test_first_cell_without_tools_and_with_foreign_tools_module(self):
+        old_cwd = Path.cwd()
+        old_path = sys.path.copy()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'tem_analyzer').mkdir()
+            (root / 'run.py').touch()
+            (root / 'requirements.txt').touch()
+            namespace = {}
+            try:
+                with patch.dict(sys.modules, {'tools': types.ModuleType('tools')}):
+                    execute_cell(self.notebook_cell('tem-2'), namespace, {'APP_DIR': str(root)})
+                self.assertEqual(namespace['ROOT'], root.resolve())
+                self.assertFalse((root / 'tools').exists())
+            finally:
+                os.chdir(old_cwd)
+                sys.path[:] = old_path
+
+    def test_inline_abl_install_preserves_cuda_pair(self):
+        versions = {'torch': '2.5.1+cu124', 'torchvision': '0.20.1+cu124', 'numpy': '1.26.4'}
+        def version(name):
+            if name not in versions:
+                raise setup.metadata.PackageNotFoundError(name)
+            return versions[name]
+        commands = []
+        def capture(command, **kwargs):
+            commands.append(command)
+            if 'install' in command:
+                constraints = Path(command[command.index('-c') + 1]).read_text()
+                for name, value in versions.items():
+                    self.assertIn(f'{name}=={value}', constraints)
+                self.assertIn(str(ROOT / 'requirements-ocr.txt'), command)
+        namespace = {'ROOT': ROOT, 'Path': Path, 'sys': sys, 'subprocess': setup.subprocess, 'USE_OCR': True}
+        with patch.object(setup.metadata, 'version', side_effect=version), patch.object(setup.subprocess, 'run', side_effect=capture):
+            execute_cell(self.notebook_cell('tem-4'), namespace, {'INSTALL_PACKAGES': True})
+        self.assertEqual(len(commands), 2)
+
+    def test_inline_install_skip_does_not_call_pip(self):
+        namespace = {'ROOT': ROOT, 'Path': Path, 'sys': sys, 'subprocess': setup.subprocess, 'USE_OCR': True}
+        with patch.object(setup.subprocess, 'run') as run:
+            execute_cell(self.notebook_cell('tem-4'), namespace, {'INSTALL_PACKAGES': False})
+        run.assert_not_called()
+
+    def test_inline_offline_install_disables_network_indexes(self):
+        def version(name):
+            if name in ('torch', 'torchvision'):
+                return '1.0'
+            raise setup.metadata.PackageNotFoundError(name)
+        commands = []
+        with tempfile.TemporaryDirectory() as directory:
+            namespace = {'ROOT': ROOT, 'Path': Path, 'sys': sys, 'subprocess': setup.subprocess, 'USE_OCR': False}
+            with patch.object(setup.metadata, 'version', side_effect=version), patch.object(setup.subprocess, 'run', side_effect=lambda cmd, **kw: commands.append(cmd)):
+                execute_cell(self.notebook_cell('tem-4'), namespace, {'INSTALL_PACKAGES': True, 'WHEELHOUSE': directory})
+        self.assertIn('--no-index', commands[0])
+        self.assertNotIn('--index-url', commands[0])
+        self.assertNotIn(str(ROOT / 'requirements-ocr.txt'), commands[0])
 
     def test_app_root_requires_complete_source(self):
         self.assertEqual(setup.app_root(ROOT), ROOT)

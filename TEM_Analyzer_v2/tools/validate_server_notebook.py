@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import tempfile
 from urllib.request import ProxyHandler, build_opener
 
@@ -22,6 +23,7 @@ def execute_cell(cell, namespace, overrides):
 
 def run(root, checkpoint, variant, ocr_dir='', run_sam_test=False):
     root = Path(root).resolve()
+    original_cwd = Path.cwd()
     notebook = json.loads((root / 'setup.ipynb').read_text(encoding='utf8'))
     namespace = {}
     with socket.socket() as sock:
@@ -62,11 +64,13 @@ def run(root, checkpoint, variant, ocr_dir='', run_sam_test=False):
                 sock.settimeout(1)
                 assert sock.connect_ex(('127.0.0.1', port)) != 0, 'child server still listening after stop'
         finally:
+            os.chdir(original_cwd)
             server = namespace.get('TEM_SERVER')
             if server is not None and not server.stop():
                 raise RuntimeError('Owned test server still running; do not delete its project')
     return {'cells': results, 'scope': 'CPU local notebook code execution, no company images or GPU',
-            'sam_smoke_in_notebook': run_sam_test, 'server_stopped': True}
+            'sam_smoke_in_notebook': run_sam_test, 'server_stopped': True,
+            'tools_directory_present': (root / 'tools').is_dir()}
 
 
 if __name__ == '__main__':
@@ -76,12 +80,28 @@ if __name__ == '__main__':
     parser.add_argument('--variant', choices=('vit_b', 'vit_l', 'vit_h'), default='vit_b')
     parser.add_argument('--ocr-dir', default='')
     parser.add_argument('--run-sam-test', action='store_true')
+    parser.add_argument('--without-tools', action='store_true', help='Run a source-only copy with no tools directory')
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     # Keep the local CPU review responsive; do not set this in the server notebook.
     os.environ.setdefault('OMP_NUM_THREADS', '4')
     os.environ.setdefault('MKL_NUM_THREADS', '4')
-    report = run(args.root, args.checkpoint, args.variant, args.ocr_dir, args.run_sam_test)
+    if args.without_tools:
+        source = Path(args.root).resolve()
+        manifest = json.loads((source / 'SOURCE_SHA256.json').read_text(encoding='utf8'))
+        with tempfile.TemporaryDirectory(prefix='tem_notebook_no_tools_') as directory:
+            for name in manifest:
+                relative = Path(name)
+                if relative.is_absolute() or '..' in relative.parts:
+                    raise ValueError('Unsafe source manifest path')
+                if relative.parts[0] == 'tools':
+                    continue
+                target = Path(directory) / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source / relative, target)
+            report = run(directory, args.checkpoint, args.variant, args.ocr_dir, args.run_sam_test)
+    else:
+        report = run(args.root, args.checkpoint, args.variant, args.ocr_dir, args.run_sam_test)
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf8')

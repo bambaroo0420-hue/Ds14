@@ -1,6 +1,6 @@
 # TEM Analyzer v2.3.0 — 시각화 워크벤치·Manual 그룹·Recipe v2
 
-회사 GPU 서버/Jupyter용: 루트의 [setup.ipynb](setup.ipynb)를 실행하세요. ABL 1.4의 기본 SAM 가중치와 선택적인 `adaptation.pt`를 재사용하며, 파일 배치·기존 CUDA 패키지 보존·실제 추론 시험·웹 서버 실행/종료 절차가 포함되어 있습니다. 자세한 서버 접속/이전 방법은 [설치 문서의 서버 절](docs/INSTALL_KO.md#회사-gpu-서버와-setupipynb)을 보세요. SAM 외의 OCR·경계·계측 전체가 GPU로 전환되는 것은 아닙니다.
+회사 GPU 서버/Jupyter용: 루트의 [setup.ipynb](setup.ipynb)를 실행하세요. **setup r2는 ABL 1.4처럼 노트북 안에서 직접 설치하며 `tools.server_setup`이 필요 없습니다.** 기존 v2.3.0 프로그램 폴더에서는 노트북만 교체하고 모델 경로를 다시 지정해도 됩니다. 처음에는 `INSTALL_PACKAGES=True`, 이후 False로 둡니다. ABL의 기본 SAM 가중치와 선택적인 `adaptation.pt`를 재사용하며, 자세한 접속/이전 방법은 [설치 문서의 서버 절](docs/INSTALL_KO.md#회사-gpu-서버와-setupipynb)을 보세요. OCR·경계·계측 전체가 GPU로 전환되는 것은 아닙니다.
 
 새 버전 변경/검증: [V230_IMPLEMENTATION_KO.md](docs/V230_IMPLEMENTATION_KO.md). 실제 조작 순서와 버튼 설명: [V230_USER_GUIDE_KO.md](docs/V230_USER_GUIDE_KO.md).
 
