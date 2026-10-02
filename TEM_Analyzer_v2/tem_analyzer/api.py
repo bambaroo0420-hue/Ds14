@@ -9,7 +9,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from .preprocessing import effective_template, model_input, restrict_mask, apply_one
+from .preprocessing import effective_template, model_input, restrict_mask, apply_one, exclusion_mask
 from .storage import Project
 from .sam_service import ModelService
 from .operations import excluded, brush, scale_from_points, detect_scale, layer_coverage, roi_pixels
@@ -31,12 +31,14 @@ def png(a):
 def index():return FileResponse(WEB/'index.html')
 
 @app.get('/api/state')
-def state():return dict({k:v for k,v in project.state.items() if k not in ('history','future')},undo_count=len(project.state['history']),redo_count=len(project.state['future']),model=model.info,capabilities={'boundary':'available','measurement':'planned','sam':'available' if model.info else 'requires_model'})
+def state():return dict({k:v for k,v in project.state.items() if k not in ('history','future')},undo_count=len(project.state['history']),redo_count=len(project.state['future']),model=model.info,storage_error=getattr(project,'_storage_error',None),capabilities={'boundary':'available','measurement':'available','batch':'available','sam':'available' if model.info else 'requires_model'})
 
 @app.post('/api/images')
 async def upload(file:UploadFile=File(...)):
     try:
-        data=await file.read(100*1024*1024+1)
+        try:data=await file.read(100*1024*1024+1)
+        except (OSError,ValueError) as exc:
+            raise HTTPException(503,f'업로드 임시 파일 읽기 실패: {exc}. 서버의 임시 폴더 접근 권한과 파일 잠금을 확인하세요.') from exc
         if len(data)>100*1024*1024:raise ValueError('파일은 100 MB 이하로 제한합니다.')
         return {'image_id':project.add_image(data,file.filename or 'image')}
     except (ValueError,OSError) as e:fail(e)
@@ -102,13 +104,13 @@ def scale_bar(body:ScaleBarIn):
 def scale_detect(body:ScaleAuto):
     try:
         im=project.image(body.image_id);tpl=effective_template(project,body.image_id)
-        if tpl.get('scale_roi') is None: raise ValueError('스케일 ROI를 드래그하여 저장한 뒤 OCR을 실행하세요.')
-        x0,y0,x1,y1=roi_pixels(tpl.get('scale_text_roi') or tpl['scale_roi'],im.shape[1],im.shape[0])
+        scan=tpl.get('scale_roi') if project.state.get('legacy_templates_enabled') else None
+        x0,y0,x1,y1=roi_pixels((tpl.get('scale_text_roi') or scan) if scan else [0,0,1,1],im.shape[1],im.shape[0])
         # EasyOCR is optional and configured for local weights, with download disabled.
         from .ocr import read_words
         words=read_words(im[y0:y1,x0:x1],body.ocr_dir,body.language)
         for word in words:word['box']=[word['box'][0]+x0,word['box'][1]+y0,word['box'][2]+x0,word['box'][3]+y0]
-        item=detect_scale(im,tpl['scale_roi'],words)
+        item=detect_scale(im,scan or [0,0,1,1],words)
         project.state['scale'][body.image_id]=item
         record=project.state.get('preprocessing',{}).get(body.image_id)
         if record is not None:record.update(reviewed=False,scale_requested=True,scale_status='proposed' if item.get('nm_per_px') else 'failed',last_error=None if item.get('nm_per_px') else 'OCR 실패: 수동 스케일을 저장하세요.')
@@ -145,7 +147,7 @@ def automatic(body:AutoIn):
     except (KeyError,ValueError,RuntimeError,MemoryError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
 
-class PromptIn(BaseModel):preview:bool=False;image_id:str;points:list[list[float]]=[];box:list[float]|None=None;roi:list[float]|None=None;parent:int|None=None;mode:str='extract'
+class PromptIn(BaseModel):preview:bool=False;image_id:str;points:list[list[float]]=[];box:list[float]|None=None;roi:list[float]|None=None;parent:int|None=None;mode:str='extract';mask_choice:int=Field(default=-1,ge=-1,le=2);align_positive:bool=False;box_margin:float=Field(default=0,ge=0,le=200)
 @app.post('/api/sam/prompt')
 def prompt(body:PromptIn):
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다.')
@@ -153,7 +155,7 @@ def prompt(body:PromptIn):
         im=model_input(project,body.image_id)
         from .prompts import validate_points
         validate_points(body.points,im.shape[1],im.shape[0])
-        ex=excluded(im.shape[:2],effective_template(project,body.image_id))
+        ex=exclusion_mask(project,body.image_id)
         if any(ex[int(p[1]),int(p[0])] for p in body.points):raise ValueError('제외 ROI 안의 점은 사용할 수 없습니다.')
         if body.parent is not None and project.candidate(body.image_id,body.parent) is None:raise ValueError('부모 후보가 없습니다.')
         if body.mode not in ('extract','edit'):raise ValueError('편집 모드 오류')
@@ -161,9 +163,15 @@ def prompt(body:PromptIn):
         if body.mode=='edit' and not parent:raise ValueError('수정할 부모 후보를 선택하세요.')
         project.assert_editable(parent)
         prior=load_prior(project,body.image_id,parent) if body.mode=='edit' else None
-        item=model.in_roi(im,body.roi,body.points,body.box,prior) if body.roi and prior else model.in_roi(im,body.roi,body.points,body.box) if body.roi else model.prompt(im,body.points,body.box,prior) if prior else model.prompt(im,body.points,body.box)
+        choice={'mask_choice':body.mask_choice} if body.mask_choice!=-1 else {}
+        if body.align_positive:
+            if not body.roi or body.parent is not None or body.mode!='extract':raise ValueError('사전정렬은 부모 없는 독립 ROI에서만 지원합니다.')
+            choice.update(align_positive=True,box_margin=body.box_margin)
+        elif body.box_margin:raise ValueError('자동 box 여백은 사전정렬 옵션과 함께 사용하세요.')
+        item=model.in_roi(im,body.roi,body.points,body.box,prior,**choice) if body.roi and prior else model.in_roi(im,body.roi,body.points,body.box,**choice) if body.roi else model.prompt(im,body.points,body.box,prior,**choice) if prior else model.prompt(im,body.points,body.box,**choice)
         if body.mode=='edit' and body.roi:
             x0,y0,x1,y1=map(int,body.roi);old=project.mask(body.image_id,body.parent);old[y0:y1,x0:x1]=item['mask'][y0:y1,x0:x1];item['mask']=old
+            item.pop('inference_domains',None) # Complete parent kept outside ROI; inherit its original domains only.
         if parent:
             from .labels import protection
             protected=protection(project,body.image_id);old=project.mask(body.image_id,body.parent);item['mask'][protected]=old[protected]
@@ -171,8 +179,8 @@ def prompt(body:PromptIn):
             item['mask'] &= project.mask(body.image_id,body.parent)
             if not item['mask'].any():raise ValueError('부모 마스크 내부에 남은 영역이 없습니다. ROI와 점을 확인하세요.')
         if body.preview:
-            return roi_reviews.stage(body.image_id,body.parent,item,{'points':body.points,'box':body.box,'roi':body.roi})
-        return save_prediction(project,body.image_id,item,'edit-preview' if body.mode=='edit' else 'roi-refine' if body.roi else 'manual',body.parent,{'points':body.points,'box':body.box,'roi':body.roi})
+            return roi_reviews.stage(body.image_id,body.parent,item,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice,'mode':body.mode,'align_positive':body.align_positive,'box_margin':body.box_margin})
+        return save_prediction(project,body.image_id,item,'edit-preview' if body.mode=='edit' else 'roi-refine' if body.roi else 'manual',body.parent,{'points':body.points,'box':body.box,'roi':body.roi,'mask_choice':body.mask_choice,'align_positive':body.align_positive,'box_margin':body.box_margin})
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
     finally:model_lock.release()
 
@@ -201,12 +209,25 @@ def duplicate(body:Duplicate):
     except KeyError as e:fail(e)
 
 class Paint(BaseModel):image_id:str;candidate_id:int;strokes:list[dict]
+
+def brush_origin(image_id,item):
+    """Drafts inherit their edit target's lock; reject stale ancestor chains."""
+    seen=set()
+    while item is not None:
+        project.assert_editable(item)
+        if item.get('deleted') or not item.get('active',True):raise ValueError('브러시 부모가 변경되었습니다. 다시 보정하세요.')
+        if item['id'] in seen:raise ValueError('브러시 부모 참조 오류')
+        seen.add(item['id'])
+        if item.get('layer_id') is not None or not item.get('parent'):return item
+        item=project.candidate(image_id,item['parent'])
+    raise ValueError('브러시 부모를 찾을 수 없습니다.')
+
 @app.post('/api/candidates/brush')
 def paint(body:Paint):
     try:
         old=project.candidate(body.image_id,body.candidate_id)
         if old is None:raise KeyError('후보가 없습니다.')
-        project.assert_editable(old)
+        brush_origin(body.image_id,old)
         original=project.mask(body.image_id,body.candidate_id);edited=brush(original,body.strokes)
         from .labels import protection,pack
         guard=protection(project,body.image_id);edited[guard]=original[guard]
@@ -214,14 +235,17 @@ def paint(body:Paint):
         return project.put_candidate(body.image_id,edited,'brush-preview',None,body.candidate_id,pending_protection=pack(original!=edited))
     except (KeyError,ValueError) as e:fail(e)
 
-class LayerIn(BaseModel):id:int|None=None;name:str='';color:str='#28dc82'
+class LayerIn(BaseModel):id:int|None=None;name:str='';color:str|None=None
 @app.post('/api/layers')
 def layer(body:LayerIn):
     layers=project.state['layers'];lid=body.id or (max(x['id'] for x in layers)+1 if layers else 1)
     if not 1<=lid<65533:raise HTTPException(400,'레이어 ID 범위 오류')
     import re
-    if not re.fullmatch(r'#[0-9a-fA-F]{6}',body.color):raise HTTPException(400,'색상은 #RRGGBB입니다.')
     old=next((x for x in layers if x['id']==lid),None)
+    import colorsys
+    rgb=colorsys.hsv_to_rgb(((lid-1)*.61803398875+.42)%1,.65,.95)
+    color=body.color or (old['color'] if old else '#'+''.join(f'{round(v*255):02x}' for v in rgb))
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}',color):raise HTTPException(400,'색상은 #RRGGBB입니다.')
     name=body.name.strip()
     if not name:
         if old:name=old['name']
@@ -229,8 +253,8 @@ def layer(body:LayerIn):
             number=lid;names={x['name'].casefold() for x in layers}
             while f'layer {number}'.casefold() in names:number+=1
             name=f'Layer {number}'
-    if old:old.update(name=name,color=body.color)
-    else:layers.append(dict(id=lid,name=name,color=body.color))
+    if old:old.update(name=name,color=color)
+    else:layers.append(dict(id=lid,name=name,color=color))
     project.save();return {'id':lid,'name':name}
 
 class Assign(BaseModel):image_id:str;candidate_id:int;layer_id:int|None;instance_id:str|None=None;reviewed:bool=False;mode:str='add';replace_id:int|None=None
@@ -243,6 +267,11 @@ def assign(body:Assign):
         project.assert_editable(item)
         if project.locked(body.layer_id):raise ValueError('대상 레이어가 잠겨 있습니다.')
         if body.mode not in ('add','replace','split'):raise ValueError('적용 방식 오류')
+        if item.get('source')=='brush-preview' and item.get('parent'):
+            parent=brush_origin(body.image_id,item)
+            from .labels import protection
+            delta=project.mask(body.image_id,item['id'])^project.mask(body.image_id,parent['id'])
+            if (delta&protection(project,body.image_id)).any():raise ValueError('미리보기 이후 보호/잠금 영역이 변경되었습니다. 브러시를 다시 적용하세요.')
         if body.mode in ('replace','split'):
             target=project.candidate(body.image_id,body.replace_id or item.get('parent') or 0)
             if not target or target['id']==item['id'] or not target.get('active',True):raise ValueError('현재 활성 상태인 부모 후보를 지정하세요. 이미 교체된 부모는 다시 교체할 수 없습니다.')
@@ -255,8 +284,10 @@ def assign(body:Assign):
             target.update(active=False,reviewed=False)
         item.update(layer_id=body.layer_id,instance_id=body.instance_id,reviewed=body.reviewed,active=True,stale_reason=None)
         if item.get('pending_protection'):
-            from .labels import protection,pack,unpack
-            guard=protection(project,body.image_id);project.state['protected'][body.image_id]=pack(guard|unpack(item.pop('pending_protection'),guard.shape))
+            from .labels import pack,unpack
+            shape=project.mask(body.image_id,item['id']).shape
+            guard=unpack(project.state['protected'].get(body.image_id),shape)
+            project.state['protected'][body.image_id]=pack(guard|unpack(item.pop('pending_protection'),shape))
         project.save();return item
     except ValueError as e:fail(e)
 
@@ -295,22 +326,20 @@ def prepare_grid(body:PrepareGrid):
         return {'points':points,'count':len(points),'inference_run':False}
     except (KeyError,ValueError) as e:fail(e)
 
-class PrepareML(BaseModel):
+from .feature_prompts import FeatureConfig, propose as feature_proposals
+
+class PrepareML(FeatureConfig):
     image_id:str
     existing:list[list[float]]=Field(default_factory=list)
-    count:int=Field(default=12,ge=1,le=100)
-    clusters:int=Field(default=5,ge=2,le=12)
-    min_distance:float=Field(default=12,ge=1,le=1000)
+    preview:bool=False
 
 @app.post('/api/prompts/ml')
 def prepare_ml(body:PrepareML):
-    from .prompts import ml_points,validate_points
     try:
-        im=model_input(project,body.image_id)
-        validate_points(body.existing,im.shape[1],im.shape[0])
-        template=effective_template(project,body.image_id)
-        points=ml_points(im,excluded(im.shape[:2],template),body.existing,body.count,body.clusters,body.min_distance)
-        return {'points':points,'count':len(points),'method':'unsupervised_kmeans_intensity_texture','inference_run':False}
+        from .preprocessing import exclusion_mask
+        im=model_input(project,body.image_id,'prompt')
+        cfg=FeatureConfig(**body.model_dump())
+        return feature_proposals(im,exclusion_mask(project,body.image_id),body.existing,cfg,body.preview)
     except (KeyError,ValueError) as e:fail(e)
 
 class PreparedRun(BaseModel):
@@ -319,6 +348,7 @@ class PreparedRun(BaseModel):
     manual_points:list[list[float]]=Field(default_factory=list)
     box:list[float]|None=None
     manual_mode:str='object'
+    manual_groups:list[dict]=Field(default_factory=list)
     pred_iou:float=Field(default=.90,ge=0,le=1)
     stability:float=Field(default=.92,ge=0,le=1)
     nms:float=Field(default=.8,ge=0,le=1)
@@ -334,22 +364,26 @@ def run_prepared(body:PreparedRun):
         if body.manual_mode not in ('object','independent'):raise ValueError('잘못된 수동점 실행 방식')
         if body.box is not None:
             if len(body.box)!=4 or not (0<=body.box[0]<body.box[2]<=w and 0<=body.box[1]<body.box[3]<=h):raise ValueError('잘못된 box')
-        template=effective_template(project,body.image_id);ex=excluded((h,w),template)
+        from .services.recipe_groups import validate_groups, infer_groups
+        groups=validate_groups(body.manual_groups,w,h)
+        template=effective_template(project,body.image_id);ex=exclusion_mask(project,body.image_id)
         auto=[p for p in body.auto_points if not ex[int(p[1]),int(p[0])]];manual=[p for p in body.manual_points if not ex[int(p[1]),int(p[0])]]
         if body.manual_mode=='independent':
             if body.box or any(p[2]==0 for p in manual):raise ValueError('음성점·box는 한 객체로 묶기 모드에서 사용하세요.')
             auto += [p[:2] for p in manual];manual=[]
-        if not auto and not manual and body.box is None:raise ValueError('Grid/ML/수동점 또는 box를 먼저 준비하세요.')
+        if not auto and not manual and body.box is None and not groups:raise ValueError('Grid/ML/수동점 또는 box를 먼저 준비하세요.')
         template=effective_template(project,body.image_id)
-        prepared={'auto_points':auto,'manual_points':manual,'box':body.box,'manual_mode':body.manual_mode}
+        prepared={'auto_points':auto,'manual_points':manual,'box':body.box,'manual_mode':body.manual_mode,'manual_groups':groups}
         result=[]
         if auto:
-            items=model.automatic(im,pred_iou=body.pred_iou,stability=body.stability,nms=body.nms,exclude=excluded((h,w),template),prepared_points=auto)
+            items=model.automatic(im,pred_iou=body.pred_iou,stability=body.stability,nms=body.nms,exclude=ex,prepared_points=auto)
             for item in items:
                 result.append(save_prediction(project,body.image_id,item,'prepared-auto',prompts={**prepared,'stability':item['stability']}))
         if manual or body.box:
             item=model.prompt(im,manual,body.box)
             result.append(save_prediction(project,body.image_id,item,'manual',prompts=prepared))
+        for item,group in infer_groups(model,im,groups,ex):
+            result.append(save_prediction(project,body.image_id,item,'manual-group',prompts=group))
         project.state.setdefault('prepared_prompts',{})[body.image_id]=prepared;project.save()
         return {'count':len(result),'created':result}
     except (KeyError,ValueError,RuntimeError) as e:fail(ValueError(str(e)))
@@ -394,6 +428,7 @@ class BatchPreprocess(BaseModel):
 
 @app.post('/api/preprocessing/apply')
 def batch_preprocess(body:BatchPreprocess):
+    if not project.state.get('legacy_templates_enabled',False):raise HTTPException(400,'기존 위치 템플릿이 꺼져 있습니다. OCR 자동 검출을 사용하거나 템플릿을 켜세요.')
     if not model_lock.acquire(blocking=False):raise HTTPException(409,'모델 작업 중입니다. 완료 후 적용하세요.')
     try:
         ids=list(dict.fromkeys(body.image_ids if body.image_ids is not None else project.state['images']))
@@ -439,7 +474,7 @@ def preprocessing_preview(image_id:str,mode:str='overlay',thumbnail:bool=False):
         im=Image.fromarray(model_input(project,image_id) if mode=='processed' else original).convert('RGBA')
         if mode=='overlay':
             overlay=Image.new('RGBA',im.size,(0,0,0,0));draw=ImageDraw.Draw(overlay)
-            tpl=record.get('template')
+            tpl=effective_template(project,image_id)
             line=max(1,round(im.width/500))
             if tpl:
                 for roi in [tpl.get(k) for k in ('scale_roi','scale_text_roi','sample_roi','magnification_roi')]+tpl.get('text_rois',[]):
@@ -460,8 +495,15 @@ def clear_images():
     return delete_many(project,list(project.state['images']))
 
 from .v2_api import install,load_prior,save_prediction,delete_many
-install(app,project,model,model_lock)
+transaction_gate=install(app,project,model,model_lock)
 
 from .roi_review import ROIReviews
 roi_reviews=ROIReviews(project,model)
-roi_reviews.install(app,model_lock,lambda r:save_prediction(project,r['image_id'],r['item'],'roi-refine',r['parent'],r['prompts']))
+roi_reviews.install(app,model_lock,lambda r:save_prediction(project,r['image_id'],r['item'],'edit-preview' if r['prompts'].get('mode')=='edit' else 'roi-extract' if r['parent'] is None else 'roi-refine',r['parent'],r['prompts']))
+
+from .routes.workflow import install as install_workflow
+install_workflow(app,project,model,model_lock,transaction_gate)
+from .routes.workbench import install as install_workbench
+install_workbench(app,project)
+from .routes.roi_auto import install as install_roi_auto
+install_roi_auto(app,project,model,model_lock,roi_reviews)

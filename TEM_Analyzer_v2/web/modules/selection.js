@@ -1,0 +1,97 @@
+/* Windows-style list selection and mask-to-layer drag/drop. */
+export function mountSelection(T) {
+  const $=id=>document.getElementById(id), selected=new Set();
+  let owner=null,anchor=null,focus='masks',rectangle=null,pointerDrop=null;
+  const rows=$('candidateRows');
+  function render(){
+    if(owner!==T.current){selected.clear();owner=T.current;anchor=null}
+    const ids=new Set(T.candidates().map(c=>c.id));
+    for(const id of selected)if(!ids.has(id))selected.delete(id);
+    const fallback=selected.size===0&&ids.has(Number(T.selectedCandidate))?Number(T.selectedCandidate):null;
+    for(const row of rows.querySelectorAll('[data-id]')){
+      const on=selected.has(+row.dataset.id)||fallback===+row.dataset.id;row.classList.toggle('multi-selected',on);
+      row.setAttribute('aria-selected',String(on));row.draggable=true;
+      if(!row.querySelector('.mask-drag-handle')){const handle=document.createElement('button');handle.type='button';handle.className='mask-drag-handle';handle.textContent='⠿';handle.title='선택 마스크를 레이어로 드래그';handle.setAttribute('aria-label',`마스크 ${row.dataset.id} 드래그 손잡이`);handle.draggable=false;row.firstElementChild.prepend(handle)}
+    }
+    $('maskSelectionCount').textContent=fallback?`1개 대상 (편집 A #${fallback}; 다중 선택 없음) · Ctrl/Shift, Ctrl+A, Delete`:`${selected.size}개 선택 · Ctrl/Shift, Ctrl+A, Delete`;
+    window.dispatchEvent(new Event('tem:selection'));
+  }
+  function select(id,event){
+    const ids=T.candidates().map(c=>c.id);
+    if(event.shiftKey&&anchor!=null&&ids.includes(anchor)){
+      if(!event.ctrlKey)selected.clear();
+      const [a,b]=[ids.indexOf(anchor),ids.indexOf(id)].sort((x,y)=>x-y);
+      ids.slice(a,b+1).forEach(x=>selected.add(x));
+    }else{
+      if(!event.ctrlKey&&!event.metaKey)selected.clear();
+      if((event.ctrlKey||event.metaKey)&&selected.has(id))selected.delete(id);else selected.add(id);
+      anchor=id;
+    }
+    render();
+  }
+  rows.onclick=e=>{
+    if(T.busy)return;
+    if(e.target.closest('.mask-drag-handle'))return;
+    const row=e.target.closest('[data-id]');if(!row)return;
+    select(+row.dataset.id,e);focus='masks';T.chooseCandidate(row.dataset.id);
+  };
+  rows.onkeydown=e=>{if(['Enter',' '].includes(e.key)){const r=e.target.closest('[data-id]');if(r){e.preventDefault();select(+r.dataset.id,e);T.chooseCandidate(r.dataset.id)}}};
+  rows.addEventListener('dragstart',e=>{
+    const row=e.target.closest('[data-id]');if(!row||T.busy){e.preventDefault();return}
+    if(!selected.has(+row.dataset.id)){selected.clear();selected.add(+row.dataset.id);render()}
+    e.dataTransfer.setData('application/x-tem-masks',JSON.stringify({image:T.current,ids:[...selected]}));
+    e.dataTransfer.effectAllowed='move';
+  });
+  // Explicit pointer handle also works in embedded browsers without HTML5 drag transport.
+  rows.addEventListener('pointerdown',e=>{
+    const handle=e.target.closest('.mask-drag-handle');if(!handle||T.busy||e.button!==0)return;
+    const row=handle.closest('[data-id]'),id=+row.dataset.id;e.preventDefault();e.stopPropagation();
+    if(!selected.has(id)){selected.clear();selected.add(id);render()}
+    row.draggable=false;pointerDrop={image:T.current,ids:[...selected],handle,row,pointer:e.pointerId};handle.setPointerCapture(e.pointerId);focus='masks';
+  });
+  function pointerTarget(e){return document.elementFromPoint(e.clientX,e.clientY)?.closest('#layerDrops [data-drop-layer]')}
+  function clearPointer(){if(!pointerDrop)return;pointerDrop.row.draggable=true;pointerDrop=null;for(const el of $('layerDrops').children)el.classList.remove('drop-target')}
+  document.addEventListener('pointermove',e=>{if(!pointerDrop)return;const target=pointerTarget(e);for(const el of $('layerDrops').children)el.classList.toggle('drop-target',el===target)});
+  document.addEventListener('pointercancel',clearPointer);
+  document.addEventListener('pointerup',e=>{if(!pointerDrop)return;const target=pointerTarget(e),data=pointerDrop;clearPointer();if(!target)return;
+    T.task(async()=>{if(T.current!==data.image)throw Error('이미지가 바뀌었습니다');await T.api('workflow/masks/bulk',{image_id:data.image,candidate_ids:data.ids,action:target.dataset.dropLayer?'assign':'unassign',layer_id:+target.dataset.dropLayer});await T.refresh()});
+  });
+  async function bulk(action,layer){
+    const ids=selected.size?[...selected]:[T.selectedCandidate].filter(Boolean);
+    if(action==='delete'&&!await T.confirm(`${ids.length}개 마스크를 삭제할까요? Undo로 복구할 수 있습니다.`))return;
+    await T.api('workflow/masks/bulk',{image_id:T.current,candidate_ids:ids,action,layer_id:layer});
+    if(action==='delete')selected.clear();await T.refresh();render();
+  }
+  for(const [id,action] of [['bulkAssign','assign'],['bulkUnassign','unassign'],['bulkDeleteMasks','delete'],['bulkReviewMasks','review']]){
+    $(id).onclick=()=>T.task(()=>bulk(action,+$('layerSelect').value));
+  }
+  $('selectAllMasks').onclick=()=>{T.candidates().forEach(c=>selected.add(c.id));render();T.task(()=>T.reloadOverlay())};
+  $('layerDrops').addEventListener('dragover',e=>{if(e.target.closest('[data-drop-layer]')){e.preventDefault();e.dataTransfer.dropEffect='move'}});
+  $('layerDrops').addEventListener('drop',e=>{
+    const target=e.target.closest('[data-drop-layer]');if(!target)return;e.preventDefault();
+    T.task(async()=>{const raw=e.dataTransfer.getData('application/x-tem-masks');if(!raw)throw Error('마스크 목록에서 드래그하세요');const data=JSON.parse(raw);if(data.image!==T.current)throw Error('이미지가 바뀌었습니다');
+      await T.api('workflow/masks/bulk',{image_id:data.image,candidate_ids:data.ids,action:target.dataset.dropLayer?'assign':'unassign',layer_id:+target.dataset.dropLayer});await T.refresh();
+    });
+  });
+  $('imageGallery').addEventListener('pointerdown',()=>focus='images');
+  rows.addEventListener('pointerdown',()=>focus='masks');
+  document.addEventListener('keydown',e=>{
+    if(T.busy||e.target.closest('input,textarea,select,[contenteditable=true],dialog'))return;
+    if(focus==='masks'&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();$('selectAllMasks').click()}
+    if(e.key==='Delete'){e.preventDefault();(focus==='masks'?$('bulkDeleteMasks'):$('deleteSelected')).click()}
+  });
+  // Drag from empty space of the list to select a rectangle; row drag remains layer assignment.
+  const scroll=rows.closest('.candidate-scroll');scroll.style.minHeight='130px';
+  scroll.addEventListener('pointerdown',e=>{
+    if(T.busy||e.button!==0||e.target.closest('tr,button'))return;
+    rectangle={x:e.clientX,y:e.clientY,previous:e.ctrlKey?[...selected]:[]};e.preventDefault();
+  });
+  document.addEventListener('pointermove',e=>{
+    if(!rectangle)return;selected.clear();rectangle.previous.forEach(x=>selected.add(x));
+    const left=Math.min(rectangle.x,e.clientX),right=Math.max(rectangle.x,e.clientX),top=Math.min(rectangle.y,e.clientY),bottom=Math.max(rectangle.y,e.clientY);
+    for(const r of rows.querySelectorAll('[data-id]')){const b=r.getBoundingClientRect();if(b.right>=left&&b.left<=right&&b.bottom>=top&&b.top<=bottom)selected.add(+r.dataset.id)}render();
+  });
+  document.addEventListener('pointerup',()=>{if(rectangle){rectangle=null;T.task(()=>T.reloadOverlay())}});
+  window.addEventListener('tem:candidates',render);window.addEventListener('tem:refreshed',render);
+  return {render,ids:()=>selected.size?[...selected]:[T.selectedCandidate].filter(Boolean).map(Number)};
+}

@@ -1,4 +1,54 @@
-# TEM Analyzer v2.0.1 수정 안내
+# TEM Analyzer v2.3.0 — 시각화 워크벤치·Manual 그룹·Recipe v2
+
+회사 GPU 서버/Jupyter용: 루트의 [setup.ipynb](setup.ipynb)를 실행하세요. **setup r2는 ABL 1.4처럼 노트북 안에서 직접 설치하며 `tools.server_setup`이 필요 없습니다.** 기존 v2.3.0 프로그램 폴더에서는 노트북만 교체하고 모델 경로를 다시 지정해도 됩니다. 처음에는 `INSTALL_PACKAGES=True`, 이후 False로 둡니다. ABL의 기본 SAM 가중치와 선택적인 `adaptation.pt`를 재사용하며, 자세한 접속/이전 방법은 [설치 문서의 서버 절](docs/INSTALL_KO.md#회사-gpu-서버와-setupipynb)을 보세요. OCR·경계·계측 전체가 GPU로 전환되는 것은 아닙니다.
+
+새 버전 변경/검증: [V230_IMPLEMENTATION_KO.md](docs/V230_IMPLEMENTATION_KO.md). 실제 조작 순서와 버튼 설명: [V230_USER_GUIDE_KO.md](docs/V230_USER_GUIDE_KO.md).
+
+요청 누락·의도 일치·코드의 완성 후 재검토: [V230_FINAL_REVIEW_KO.md](docs/V230_FINAL_REVIEW_KO.md). **모든 논의 요구의 완성판은 아니며** 부분/미구현 항목을 명시합니다.
+
+기존 Grid/feature 일괄 SAM, 프롬프트 재사용, 부분 GT 및 선택 마스크 회전·계측 기능은 유지됩니다. 새 UI는 원본 영상 위에 마스크/GT 진단을 표시하고 실제 회전 기준점·치수선을 별도 창에서 보여줍니다. 자동 결과는 재료 정답이 아니며 검수가 필요합니다.
+
+v2.3.0에 통합: [레이어별 브러시 잠금·두 층 사이 Gradient/DP 빈틈 보정 사용법과 검증](docs/GAP_BRIDGE_AND_LOCKS_KO.md). 내부 구멍 자동 채움은 포함하지 않습니다. 해당 문서의 로컬 검토 시점 기록과 현재 배포 상태는 구분하세요.
+
+Windows 소스 ZIP은 압축을 푼 뒤 처음 한 번 `install_windows.bat`, 이후에는 `start_windows.bat`으로 실행합니다. 패키지·가중치는 ZIP에 포함하지 않습니다. 문제가 생기면 `diagnose_windows.bat`과 [설치 안내](docs/INSTALL_KO.md)를 확인하세요. 기존 프로젝트·가중치는 별도 백업하고, 새 버전은 새 폴더에 설치하세요.
+
+- [이번 오류 수정·기능별 검증 및 한계](docs/V229_REVIEW_KO.md)
+- `준비한 프롬프트로 SAM 실행`: 후보를 모두 준비한 뒤 메타데이터 1회 저장, 일시적 Windows 잠금 재시도, 저장 실패 후 편집 차단.
+- `5 일괄 처리 → 대상 이미지 스케일 확인·확정`: 표에서 미적용 검출값 저장과 최종 확정을 구분합니다. 검출값 저장만으로 제외 박스가 바뀌지는 않습니다.
+
+SAM 후보를 레이어로 묶어 회전하고 두께/CD를 측정하는 로컬 도구입니다. **경계 보정과 GT 생성은 선택 사항이며 회전·계측의 선행 조건이 아닙니다.**
+
+v2.2에서는 필요한 마스크만 선택 집합으로 저장해 **레이어 배정 없이** 부분 GT·회전·계측할 수 있습니다. 미선택 영역은 unknown입니다. 프롬프트 preset 재사용(크기 비율/ECC), 확대 OCR, 프레임 경계 오판 방지와 영상 방향 보조 추정을 추가했습니다.
+
+- [v2.2 사용법·실제 검증·남은 한계](docs/V220_REVIEW_KO.md)
+- [v2.2.1 계측 표본·품질 기준, 실제 5장 비교](docs/V221_REVIEW_KO.md)
+- [v2.2.2 얇은 층 프로파일·실제 SAM 24회·회전 반례](docs/V222_REVIEW_KO.md)
+- [v2.2.3 프롬프트 일괄 재사용·실제 SAM 16회·정합 실패 개선](docs/V223_REVIEW_KO.md)
+- [v2.2.4 독립 ROI·실제 SAM 38회·crop 경계 보호·얇은 층 계측 한계](docs/V224_REVIEW_KO.md)
+- [v2.2.5 기울어진 마스크의 계측 유효성 오류 수정·72개 대조시험](docs/V225_REVIEW_KO.md)
+- [v2.2.6 직선층 ROI 사전정렬·실제 SAM 비교·미리보기 로딩 보완](docs/V226_REVIEW_KO.md)
+- [v2.2.7 회전 기준 비교·일괄 실패/건너뜀·실제 GUI 검증](docs/V227_REVIEW_KO.md)
+- [v2.2.8 두께·CD 동시 보존·실제 GUI ZIP·좌표 왕복 검증](docs/V228_REVIEW_KO.md)
+- [5시간 개선 종합 검토·사용자 의도 일치도·남은 우선순위](docs/FINAL_5H_REVIEW_KO.md)
+- [5시간 반복 개선 진행 기록](docs/ITERATION_VNEXT_KO.md)
+
+기존 고정 위치 템플릿은 기본 비활성화입니다. `기존 위치 템플릿 켜기/끄기`로 제어하며, 이미지별 OCR 검출 박스는 독립적으로 작동합니다.
+
+- **실행:** 최초 설치 후 `start_windows.bat` → `http://127.0.0.1:8765`.
+- [설치·공식 체크포인트 링크·회사 오프라인 준비](docs/INSTALL_KO.md)
+- [사용 순서·기능별 수정·테스트 명령](docs/DEVELOPMENT_KO.md)
+- [모듈 구성과 수정 위치](docs/ARCHITECTURE_KO.md)
+- [좌표·GT·측정 데이터 계약](docs/DATA_CONTRACT_KO.md)
+- [실제 검증 결과와 한계](docs/VALIDATION_REPORT_KO.md)
+- [추가점·노이즈 제거 및 분할 우선 일괄 처리](docs/PROMPTS_DENOISE_KO.md)
+- [공개 이미지 14장 실제 검토·보완 우선순위](docs/PUBLIC_IMAGE_REVIEW_KO.md)
+- [첨부 45° 이미지: 자동 경로 실패 및 보조 회전 검토](docs/ATTACHED_45DEG_REVIEW_KO.md)
+- [변경 기록](docs/CHANGELOG_KO.md)
+
+v2.1은 이미지별 문자/바 자동 검출, 레이어 공유 경계 Gradient+DP,
+분리된 배정·검수, Ctrl/Shift 다중 선택·드래그, 삭제 복원,
+회전 좌표 변환, 두께/CD, 일괄 처리·취소·실패 재시도를 추가합니다.
+아래 v2.0.1 내용은 기존 기능 이력입니다. 새 작업 흐름과 설치 기준은 위 문서를 우선 참고하세요.
 
 ## 2026-09-29 수정: 레이어·제외 ROI·재분할 검수
 
