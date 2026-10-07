@@ -1,0 +1,56 @@
+name: Package TEM train-count benchmark
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/package-tem-train-count.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare pinned official SAM sources and weights
+        run: python TEM_Offline_Metrology/prepare_training_assets.py
+      - name: Build and verify complete ZIP
+        shell: python
+        run: |
+          from pathlib import Path
+          import zipfile, hashlib
+          root=Path('TEM_Offline_Metrology')
+          files=[
+              'temflow/__init__.py','temflow/core.py','temflow/models.py',
+              'temflow/data.py','temflow/semantic_decoder.py',
+              'temflow/folder_splits.py','temflow/learning_curve.py',
+              'requirements.txt','prepare_training_assets.py','README_TRAIN_COUNT_KO.md',
+              'notebooks/00_train_count_setup.ipynb','notebooks/13_train_count_benchmark.ipynb',
+              'vendor/SAM2_LICENSE','weights/sam2.1_hiera_large.pt']
+          files += [p.relative_to(root).as_posix() for p in (root/'vendor/sam2').rglob('*')
+                    if p.is_file() and '__pycache__' not in p.parts and p.suffix!='.pyc']
+          output=Path('TEM_Train_Count_Benchmark_Complete.zip')
+          with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_STORED) as z:
+              for name in sorted(files):z.write(root/name,'TEM_Offline_Metrology/'+name)
+          with zipfile.ZipFile(output) as z:
+              assert z.testzip() is None
+              assert len(z.namelist())==len(files)
+          h=hashlib.sha256()
+          with output.open('rb') as f:
+              for b in iter(lambda:f.read(8*1024*1024),b''):h.update(b)
+          Path('SHA256SUMS.txt').write_text(h.hexdigest()+'  '+output.name+'\n')
+          print('Verified ZIP:',output.stat().st_size,'bytes;',len(files),'files')
+      - name: Publish release with complete ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="tem-train-count-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" TEM_Train_Count_Benchmark_Complete.zip SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title "TEM Train Count Benchmark complete package" \
+            --notes "Includes notebooks 00/13, temflow training code, pinned official SAM2.1 sources and Large weights. No company images or GT. Python/CUDA dependencies must be installed separately. Start with README_TRAIN_COUNT_KO.md. This archive is rebuilt from the published source, with official weights verified by SHA256."
