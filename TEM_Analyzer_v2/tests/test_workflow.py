@@ -52,16 +52,18 @@ class WorkflowTest(unittest.TestCase):
         stats=c.get(f'/api/coverage/{self.id}/stats')
         self.assertEqual(stats.status_code,200,stats.text)
         self.assertEqual(stats.json()['excluded'],0)
-        r=c.post('/api/scale/detect',json={'image_id':self.id})
-        self.assertEqual(r.status_code,400)
-        self.assertIn('스케일 ROI',r.json()['detail'])
+        from unittest.mock import patch
+        with patch('tem_analyzer.ocr.read_words',return_value=[]):
+            r=c.post('/api/scale/detect',json={'image_id':self.id})
+        self.assertEqual(r.status_code,200)
+        self.assertIsNone(r.json()['nm_per_px'])
         from tem_analyzer.storage import Project
         self.assertIsNone(Project(self.temp.name).state['templates']['empty']['scale_roi'])
 
     def test_missing_model_and_unimplemented_are_explicit(self):
         r=self.client.post('/api/sam/automatic',json={'image_id':self.id,'grid':16})
         self.assertEqual(r.status_code,400)
-        self.assertEqual(self.client.get('/api/state').json()['capabilities']['measurement'],'planned')
+        self.assertEqual(self.client.get('/api/state').json()['capabilities']['measurement'],'available')
         self.assertEqual(self.client.get('/').status_code,200)
 
 if __name__=='__main__':unittest.main()

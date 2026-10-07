@@ -61,9 +61,8 @@ def refine_all(rgb,mask,valid,settings=None,filter_cfg=None,overrides=None,pins=
     if cfg['inside']+cfg['outside']<2:raise ValueError('탐색 폭 합계는 2 px 이상이어야 합니다.')
     if not 1<=int(cfg['jump'])<=20 or not 0<=cfg['smooth']<=10 or not 0<=cfg['distance']<=10 or not 0<=cfg['weak']<=1:raise ValueError('연속성 설정 범위 오류')
     if cfg['polarity'] not in ('both','positive','negative'):raise ValueError('극성 오류')
-    fc=filter_cfg or {};guard=3
-    if fc.get('enabled'):
-        guard+=int(np.ceil(4*float(fc.get('sigma',1.2)))) if fc.get('method','gaussian')=='gaussian' else int(np.ceil(3*float(fc.get('sigma_space',2.))))
+    from .preprocessing import filter_support
+    guard=3+filter_support(filter_cfg)
     safe=ndi.binary_erosion(valid,iterations=guard,border_value=0)
     f=gray(filter_image(sanitized(rgb,valid),filter_cfg));gy,gx=np.gradient(f)
     signed=ndi.distance_transform_edt(mask)-ndi.distance_transform_edt(~mask)

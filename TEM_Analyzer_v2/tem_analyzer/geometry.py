@@ -44,7 +44,7 @@ def mask_contours(mask):
     # Contouring on padded original resolution. Do not use pyplot/global GUI state.
     fig=Figure();ax=fig.subplots()
     cc=ax.contour(np.pad(np.asarray(mask,float),1),levels=[.5])
-    out=[s-1 for s in cc.allsegs[0] if len(s)>5]
+    out=[s-1 for s in cc.allsegs[0] if len(s)>=4]
     fig.clear()
     if not out: raise ValueError('마스크 경계를 찾지 못했습니다.')
     return out

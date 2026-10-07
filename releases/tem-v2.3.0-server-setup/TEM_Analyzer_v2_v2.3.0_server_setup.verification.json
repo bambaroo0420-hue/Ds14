@@ -1,0 +1,8 @@
+{
+  "file": "TEM_Analyzer_v2_v2.3.0_server_setup.zip",
+  "files": 212,
+  "bytes": 599559,
+  "sha256": "f931b31d9553eed017415929951de17893707c7c03e88532443eda82d17e50dd",
+  "crc_and_source_hashes": "PASS",
+  "scope": "v2.3.0 source + server setup notebook; no weights/images/venv/projects"
+}

@@ -1,0 +1,12 @@
+{
+  "version": "2.3.0",
+  "file": "TEM_Analyzer_v2_v2.3.0_windows_source.zip",
+  "files": 207,
+  "source_hashes": 206,
+  "bytes": 577055,
+  "sha256": "375fdabf213f13f651e307696ccce2c164ab9611ae95e9c247ed120f6243a90f",
+  "python_files": 132,
+  "crc": "PASS",
+  "hashes": "PASS",
+  "scope": "source-only; no models, images, private projects, venv or test outputs"
+}

@@ -20,10 +20,10 @@ def load_prior(project,iid,c):
 
 
 def save_prediction(project,iid,item,source,parent=None,prompts=None):
-    c=project.put_candidate(iid,restrict_mask(project,iid,item['mask']),source,float(item['score']) if item.get('score') is not None else None,parent,prompts)
+    c=project.put_candidate(iid,restrict_mask(project,iid,item['mask']),source,float(item['score']) if item.get('score') is not None else None,parent,prompts,inference_domains=item.get('inference_domains',[]))
     if item.get('logits') is not None and item.get('context'):
         np.save(project.root/'logits'/f"{iid}_{c['id']}.npy",item['logits'],allow_pickle=False);c['logits_context']=item['context']
-    for key in ('prior_source','embedding_reused'): 
+    for key in ('prior_source','embedding_reused','mask_choice','multimask_scores','prompt_violations','roi_alignment'):
         if key in item:c[key]=item[key]
     project.save();return c
 
@@ -80,35 +80,112 @@ def metric(pred,truth,valid,tolerance=2.):
 def install(app,project,model,model_lock):
     gate=asyncio.Lock();previews={}
     @app.middleware('http')
-    async def transaction(request:Request,call_next):
-        if not request.url.path.startswith('/api/'):return await call_next(request)
+    async def transaction(request: Request, call_next):
+        path = request.url.path
+        mutating = request.method in ('POST', 'DELETE', 'PUT', 'PATCH')
+        if not path.startswith('/api/'):
+            return await call_next(request)
+        if mutating and getattr(project, '_storage_error', None):
+            return JSONResponse({'detail': project._storage_error}, status_code=503)
+        if path.startswith('/api/workflow/jobs'):
+            return await call_next(request)
+        if mutating and getattr(project, 'busy_job', False):
+            return JSONResponse({'detail': '일괄 작업 중입니다.'}, status_code=409)
+
         async with gate:
-            path=request.url.path;mutating=request.method in ('POST','DELETE','PUT','PATCH')
-            transactional=mutating and not (path.startswith('/api/images') or path in ('/api/model/load','/api/v2/delete','/api/v2/undo','/api/v2/redo') or path.startswith('/api/prompts/') or path.startswith('/api/v2/boundary/preview') or path.startswith('/api/v2/evaluate') or path.startswith('/api/v2/boundary/cancel'))
-            before=copy.deepcopy(project.state) if transactional else None;start=time.perf_counter()
-            body={}
-            if mutating and 'application/json' in request.headers.get('content-type',''):
-                try:body=await request.json()
-                except Exception:pass
-            if (path=='/api/sam/prompt' and body.get('preview')) or (path.startswith('/api/roi-previews/') and request.method=='DELETE'):transactional=False;before=None
-            if transactional:project.checkpoint(path)
+            if mutating and getattr(project, '_storage_error', None):
+                return JSONResponse({'detail': project._storage_error}, status_code=503)
+            if mutating and getattr(project, 'busy_job', False):
+                return JSONResponse({'detail': '일괄 작업 중입니다.'}, status_code=409)
+
+            transactional = mutating and not (
+                path.startswith('/api/images')
+                or path in ('/api/model/load', '/api/v2/delete', '/api/v2/undo', '/api/v2/redo')
+                or path.startswith('/api/prompts/')
+                or path.startswith('/api/v2/boundary/preview')
+                or path.startswith('/api/v2/evaluate')
+                or path.startswith('/api/v2/boundary/cancel')
+            )
+            body = {}
+            if mutating and 'application/json' in request.headers.get('content-type', ''):
+                try:
+                    body = await request.json()
+                except Exception:
+                    pass
+            if (
+                path in ('/api/workflow/rotation/compare', '/api/workflow/export', '/api/workflow/scales/review','/api/sam/roi-auto/preview')
+                or (path == '/api/sam/prompt' and body.get('preview'))
+                or (path.startswith('/api/roi-previews/') and request.method == 'DELETE')
+            ):
+                transactional = False
+
+            before = copy.deepcopy(project.state) if transactional else None
+            start = time.perf_counter()
+            deferred = transactional and path in ('/api/sam/prepared','/api/sam/roi-auto/accept')
+            if transactional:
+                project.checkpoint(path)
+            if deferred:
+                project._defer_saves = True
+
             try:
-                response=await call_next(request)
-                if transactional and response.status_code>=400:project.state=before;project.save()
+                response = await call_next(request)
+                if transactional and response.status_code >= 400:
+                    project.state = before
+                    if not deferred:
+                        project.save()
                 elif transactional:
                     if path.startswith('/api/sam/'):
-                        run={'id':uuid.uuid4().hex,'endpoint':path,'inputs':body,'seconds':time.perf_counter()-start,'model':copy.deepcopy(model.info),'preprocessing':copy.deepcopy(project.state['preprocessing'].get(body.get('image_id'))),'timestamp':time.time()}
+                        iid = body.get('image_id')
+                        run = {
+                            'id': uuid.uuid4().hex,
+                            'endpoint': path,
+                            'inputs': body,
+                            'seconds': time.perf_counter() - start,
+                            'model': copy.deepcopy(model.info),
+                            'preprocessing': copy.deepcopy(project.state['preprocessing'].get(iid)),
+                            'timestamp': time.time()
+                        }
                         project.state['runs'].append(run)
-                        for c in project.state['candidates'].get(body.get('image_id'),[]):
-                            if c['id']>=before['next_candidate']:c['run_id']=run['id']
-                        iid=body.get('image_id')
-                        if iid in project.state['images']:run['image_sha256']=hashlib.sha256(project.image(iid).tobytes()).hexdigest()
+                        for candidate in project.state['candidates'].get(iid, []):
+                            if candidate['id'] >= before['next_candidate']:
+                                candidate['run_id'] = run['id']
+                        if iid in project.state['images']:
+                            run['image_sha256'] = hashlib.sha256(project.image(iid).tobytes()).hexdigest()
+                    if deferred:
+                        project._defer_saves = False
                     project.save()
                 return response
-            except Exception as e:
-                if transactional:project.state=before;project.save()
-                if isinstance(e,(ValueError,KeyError,OSError)):return JSONResponse({'detail':str(e)},status_code=400)
+
+            except Exception as exc:
+                if deferred:
+                    project._defer_saves = False
+                if transactional:
+                    project.state = before
+                    if not deferred:
+                        try:
+                            project.save()
+                        except Exception as restore_error:
+                            project._storage_error = (
+                                f'작업 실패: {exc} / 복구 저장 실패: {restore_error}. '
+                                '편집을 차단했습니다. 서버 종료 후 프로젝트 폴더를 백업하고 저장 상태를 확인하세요.'
+                            )
+                            return JSONResponse({'detail': project._storage_error}, status_code=503)
+                if isinstance(exc, OSError):
+                    project._storage_error = (
+                        f'파일 저장/접근 실패: {exc}. '
+                        '편집을 차단했습니다. 서버 종료 후 프로젝트 폴더를 백업하고 잠금/권한 원인을 확인하세요.'
+                    )
+                    return JSONResponse({'detail': project._storage_error}, status_code=503)
+                if isinstance(exc, (ValueError, KeyError)):
+                    return JSONResponse({'detail': str(exc)}, status_code=400)
                 raise
+            except asyncio.CancelledError:
+                if deferred:
+                    project.state = before
+                raise
+            finally:
+                if deferred:
+                    project._defer_saves = False
 
     @app.post('/api/v2/undo')
     def undo():return project.undo()
@@ -176,7 +253,8 @@ def install(app,project,model,model_lock):
         for iid in ids:
             try:
                 im=project.image(iid);tpl=effective_template(project,iid);roi=tpl.get('scale_roi')
-                if not roi:raise ValueError('스케일바 ROI가 없습니다.')
+                if not project.state.get('legacy_templates_enabled'):tpl={};roi=None
+                roi=roi or [0,0,1,1]
                 words=[];ocr_error=None
                 for r in [tpl.get('scale_text_roi') or roi]:
                     x0,y0,x1,y1=roi_pixels(r,im.shape[1],im.shape[0])
@@ -214,7 +292,9 @@ def install(app,project,model,model_lock):
         settings=body.get('settings',{});record=project.state['preprocessing'][iid];edge_cfg=record.get('edge_filter',{})
         # model_input already filtered. Erode safety for configured filter support, without filtering twice.
         safe=~excluded(am.shape,effective_template(project,iid));safe&=~guard
-        if edge_cfg.get('enabled') and float(edge_cfg.get('sigma',1))>0:safe=ndi.binary_erosion(safe,iterations=int(np.ceil(4*float(edge_cfg.get('sigma',1)))))
+        from .preprocessing import filter_support
+        support=filter_support(edge_cfg)
+        if support:safe=ndi.binary_erosion(safe,iterations=support)
         result=refine_all(rgb,am,safe,settings,overrides=body.get('overrides'),pins=body.get('pins'))
         candidate=am.copy();candidate[eligible]=result['mask'][eligible]
         # Only move the common interface, never the free external boundary of A.
@@ -254,3 +334,5 @@ def install(app,project,model,model_lock):
         previews.clear();return {'created':created,'changed_pixels':p['changed']}
     @app.post('/api/v2/boundary/cancel')
     def boundary_cancel(body:dict):previews.pop(body.get('token'),None);return {'ok':True}
+
+    return gate

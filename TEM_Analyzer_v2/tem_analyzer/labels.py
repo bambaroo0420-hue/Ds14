@@ -13,9 +13,11 @@ def unpack(a,shape):
 
 def compose(project,iid,reviewed_only=False):
     info=project.state['images'][iid];shape=(info['height'],info['width']);labels=np.full(shape,UNKNOWN,np.uint16);conflict=np.zeros(shape,bool)
+    included=[]
     for c in project.state['candidates'][iid]:
         if c.get('deleted') or not c.get('active',True) or c['layer_id'] is None:continue
         if reviewed_only and not c.get('reviewed'):continue
+        included.append(c)
         m=project.mask(iid,c['id']);lid=c['layer_id']
         conflict|=m&(labels!=UNKNOWN)&(labels!=lid);labels[m]=lid
     annotations=project.state['annotations'].get(iid,{})
@@ -24,6 +26,8 @@ def compose(project,iid,reviewed_only=False):
     ex=excluded(shape,effective_template(project,iid))|unpack(annotations.get('exclude'),shape)
     labels[ex]=EXCLUDED;conflict[ex]=False
     labels[conflict]=UNCERTAIN
+    from .roi_domains import crop_guard
+    cut=crop_guard(project,iid,included);labels[cut&~ex]=UNKNOWN;conflict[cut]=False
     valid=(labels<EXCLUDED)&~conflict
     return labels,valid,conflict
 

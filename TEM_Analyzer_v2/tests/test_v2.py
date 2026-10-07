@@ -77,6 +77,7 @@ class V2Tests(unittest.TestCase):
         from tem_analyzer.v2_api import load_prior
         prior=load_prior(self.api.project,self.id,r);self.assertEqual(prior['logits'].shape,(1,256,256));self.assertTrue(self.api.project.state['runs'][-1]['seconds']>=0);self.assertIn('image_sha256',self.api.project.state['runs'][-1])
     def test_batch_ocr_missing_weights_uses_explicit_common_fallback(self):
+        self.api.project.state['legacy_templates_enabled']=True
         im=np.full((60,80,3),40,np.uint8);im[40:43,10:50]=240;buf=io.BytesIO();Image.fromarray(im).save(buf,format='PNG')
         iid=self.client.post('/api/images',files={'file':('bar.png',buf.getvalue(),'image/png')}).json()['image_id']
         self.post('preprocessing/apply',{'template':{'id':'ocr','name':'ocr','scale_roi':[0,.5,1,.9],'scale_text_roi':[0,.2,1,.5],'text_rois':[]},'image_ids':[iid],'apply_regions':True,'apply_scale':False})

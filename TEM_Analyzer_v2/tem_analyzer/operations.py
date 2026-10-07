@@ -46,17 +46,29 @@ def detect_scale(image,roi,words):
             if -h*.25<=bx-ar<=h*3 and abs((ay+ab-by-bb)/2)<h*.7:
                 groups.append(dict(text=a['text']+' '+b['text'],box=[ax,min(ay,by),br,max(ab,bb)],confidence=min(a['confidence'],b['confidence'])))
     for word in groups:
-        match=re.search(r'(\d+(?:[.,]\d+)?)\s*(nm|um)\b',word['text'],re.I)
+        # A material thickness label such as 'TaOx ~ 7 nm' is NOT a scale label.
+        match=re.fullmatch(r'\s*(\d+(?:[.,]\d+)?)\s*(nm|um)\s*',word['text'],re.I)
         if not match:continue
         length=float(match[1].replace(',','.'));unit=match[2].lower()
         if length<=0:continue
         tx0,ty0,tx1,ty1=word['box'];tx=(tx0+tx1)/2;ty=(ty0+ty1)/2
         for bar in bars:
             a,b=bar['bar'];cx=(a[0]+b[0])/2;cy=(a[1]+b[1])/2
+            # Never calibrate from a text glyph's short horizontal stroke.
+            bx0,by0,bx1,by1=bar['box'];text_height=max(1,ty1-ty0)
+            # CRAFT may merge a label and the bar into one tall OCR rectangle.
+            # Only shorten its effective text height when a long rectangular bar
+            # sits below the rectangle's midpoint; glyph strokes still fail width.
+            if by0>ty0+text_height*.55 and bx1-bx0>=(tx1-tx0)*.65:
+                text_height=max(1,min(text_height,by0-ty0))
+            overlap=max(0,min(tx1,bx1)-max(tx0,bx0))*max(0,min(ty1,by1)-max(ty0,by0))
+            # OCR boxes include padding and an axis-aligned box may overlap a
+            # tilted bar. Permit the bottom margin, never the middle of text.
+            if overlap>(tx1-tx0)*text_height*.4 or cy<ty0+text_height*.75 or bar['pixel_length']<max(12,text_height*2,(tx1-tx0)*.65):continue
             # Default acquisition layout: label above and horizontally near bar.
             if ty>cy+max(4,ty1-ty0) or abs(tx-cx)>max(bar['pixel_length'],30) or abs(ty-cy)>max(80,image.shape[0]*.12):continue
             distance=float(np.hypot(tx-cx,ty-cy));nm=scale_from_points(a,b,length,unit)
-            pairs.append(dict(bar=bar['bar'],pixel_length=bar['pixel_length'],nm_per_px=nm,px_per_nm=1/nm,length=length,unit=unit,text=word['text'],text_box=word['box'],distance=distance))
+            pairs.append(dict(bar=bar['bar'],bar_box=bar['box'],pixel_length=bar['pixel_length'],nm_per_px=nm,px_per_nm=1/nm,length=length,unit=unit,text=word['text'],text_box=word['box'],distance=distance))
     pairs.sort(key=lambda p:p['distance'])
     unique=[]
     for p in pairs:
